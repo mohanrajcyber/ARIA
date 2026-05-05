@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ARIA Interview</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: #0d0d0d;
+    font-family: system-ui, sans-serif;
+    color: #e5e7eb;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+  #header {
+    padding: 10px 14px;
+    background: rgba(251,146,60,0.1);
+    border-bottom: 1px solid rgba(251,146,60,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .title { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:#fb923c; }
+  .dot { width:8px; height:8px; background:#22c55e; border-radius:50%; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  #answerBox {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #f3f4f6;
+  }
+  .label { font-size:10px; font-weight:700; color:#22c55e; letter-spacing:1px; margin-bottom:6px; }
+  .placeholder { color:rgba(255,255,255,0.2); font-size:12px; text-align:center; margin-top:30px; line-height:1.8; }
+  .thinking { color:#fb923c; font-size:12px; }
+  .transcript-text { color:rgba(255,255,255,0.4); font-size:11px; font-style:italic; margin-bottom:8px; }
+
+  #pttArea {
+    padding: 14px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #pttBtn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: 2px solid rgba(251,146,60,0.4);
+    background: rgba(251,146,60,0.08);
+    color: #fb923c;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  #pttBtn.recording {
+    background: rgba(239,68,68,0.2);
+    border-color: #ef4444;
+    color: #fca5a5;
+    animation: recordPulse 0.8s infinite;
+  }
+  @keyframes recordPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+  }
+
+  #statusText {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    text-align: center;
+  }
+  #statusText.active { color: #ef4444; }
+
+  #manualRow {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  #manualInput {
+    flex: 1;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #fff;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+  }
+  #manualInput:focus { border-color: rgba(251,146,60,0.4); }
+  #manualBtn {
+    background: linear-gradient(135deg,#fb923c,#f43f5e);
+    border: none;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  #footer { padding:5px; text-align:center; font-size:10px; color:rgba(255,255,255,0.15); flex-shrink:0; }
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:4px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <div class="title">
+    <div class="dot"></div>
+    ARIA — Interview Assistant
+  </div>
+  <span style="font-size:10px;color:rgba(255,255,255,0.3);">Private & Secure</span>
+</div>
+
+<div id="answerBox">
+  <div class="placeholder">
+    🎙️ Hold <strong style="color:#fb923c;">SPACE</strong> to record question<br>
+    Release to get ARIA's answer<br><br>
+    <span style="font-size:10px;">Or type manually below</span>
+  </div>
+</div>
+
+<div id="pttArea">
+  <button id="pttBtn">🎙️ Hold SPACE / Hold Button to Record</button>
+  <div id="statusText">Ready — hold Space or button to speak</div>
+  <div id="manualRow">
+    <input id="manualInput" type="text" placeholder="Or type question manually..."
+      onkeydown="if(event.key==='Enter'){event.preventDefault();askManual();}">
+    <button id="manualBtn" onclick="askManual()">Ask</button>
+  </div>
+</div>
+
+<div id="footer">ARIA by Mohanraj · Confidential · Space = Push to Talk</div>
+
+<script>
+  // Read API config passed via URL params
+  const params = new URLSearchParams(window.location.search);
+  const GROQ_API_KEY = params.get('k') || '';
+  const GROQ_MODEL = params.get('m') || 'llama-3.3-70b-versatile';
+
+  let isRecording = false;
+  let recognition = null;
+  let currentTranscript = '';
+
+  const pttBtn = document.getElementById('pttBtn');
+  const statusText = document.getElementById('statusText');
+  const answerBox = document.getElementById('answerBox');
+
+  function startRecording() {
+    if (isRecording) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { statusText.textContent = 'Speech not supported — use manual input'; return; }
+
+    recognition = new SR();
+    recognition.lang = 'en-IN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      pttBtn.classList.add('recording');
+      pttBtn.innerHTML = '🔴 Recording... (Release to get answer)';
+      statusText.textContent = '🎙️ Listening...';
+      statusText.classList.add('active');
+      currentTranscript = '';
+    };
+
+    recognition.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) currentTranscript += e.results[i][0].transcript + ' ';
+        else interim = e.results[i][0].transcript;
+      }
+      statusText.textContent = '🎙️ ' + (currentTranscript || interim).slice(-60) + '...';
+    };
+
+    recognition.onerror = (e) => {
+      stopRecording();
+      statusText.textContent = 'Mic error: ' + e.error + ' — try manual input';
+      statusText.classList.remove('active');
+    };
+
+    recognition.start();
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    pttBtn.classList.remove('recording');
+    pttBtn.innerHTML = '🎙️ Hold SPACE / Hold Button to Record';
+    statusText.classList.remove('active');
+    if (recognition) { recognition.stop(); recognition = null; }
+
+    const question = currentTranscript.trim();
+    if (question.length > 2) {
+      statusText.textContent = 'Getting answer...';
+      askARIA(question);
+    } else {
+      statusText.textContent = 'Nothing heard — try again or type manually';
+    }
+  }
+
+  async function askARIA(question) {
+    answerBox.innerHTML = '<div class="transcript-text">❝ ' + question + ' ❞</div><div class="thinking">⏳ ARIA is preparing your answer...</div>';
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_API_KEY },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: 'You are a secret real-time interview assistant. The user is in a live job interview. Give a confident, concise, ready-to-speak answer in 3-5 sentences. Plain text only, no markdown. Be direct and professional.' },
+            { role: 'user', content: question }
+          ],
+          temperature: 0.5,
+          max_tokens: 250
+        })
+      });
+      const data = await res.json();
+      const answer = data.choices[0].message.content;
+      answerBox.innerHTML =
+        '<div class="transcript-text">❝ ' + question + ' ❞</div>' +
+        '<div class="label">✦ SUGGESTED ANSWER</div>' +
+        '<div>' + answer.replace(/\n/g, '<br>') + '</div>';
+
+      try {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(); osc.stop(ctx.currentTime + 0.4);
+      } catch(e) {}
+
+      statusText.textContent = 'Ready — hold Space or button to speak';
+    } catch(e) {
+      answerBox.innerHTML = '<span style="color:#f87171;">Error. Check internet.</span>';
+      statusText.textContent = 'Error — try again';
+    }
+  }
+
+  function askManual() {
+    const input = document.getElementById('manualInput');
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+    statusText.textContent = 'Getting answer...';
+    askARIA(q);
+  }
+
+  // Push-to-Talk
+  pttBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording(); });
+  pttBtn.addEventListener('mouseup', stopRecording);
+  pttBtn.addEventListener('mouseleave', () => { if (isRecording) stopRecording(); });
+  pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
+  pttBtn.addEventListener('touchend', stopRecording);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !isRecording && document.activeElement.id !== 'manualInput') {
+      e.preventDefault(); startRecording();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space' && isRecording) { e.preventDefault(); stopRecording(); }
+  });
+</script>
+</body>
+</html>
