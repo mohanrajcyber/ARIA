@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>ARIA - AI Research & Intelligence Assistant</title>
+  <title>QUANTUM AI - Advanced Intelligence Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -195,7 +195,7 @@
   <script>
     /*
      * ═══════════════════════════════════════════════════════════════
-     * ARIA - FULLY ENHANCED VERSION - ALL 15 FEATURES! 🚀
+     * QUANTUM AI - FULLY ENHANCED VERSION - ALL 20 FEATURES! 🚀
      * ═══════════════════════════════════════════════════════════════
      * 
      * ✅ ALL 20 PREMIUM FEATURES IMPLEMENTED - 10/10 PERFECT! 🏆
@@ -390,12 +390,12 @@
     };
 
     // ✅ Feature Status Log
-    console.log('%c🚀 ARIA ULTIMATE - ALL 20 FEATURES! PERFECT 10/10! 🚀', 'background: linear-gradient(to right, #fb923c, #f43f5e); color: white; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 8px;');
+    console.log('%c🚀 QUANTUM AI ULTIMATE - ALL 20 FEATURES! PERFECT 10/10! 🚀', 'background: linear-gradient(to right, #fb923c, #f43f5e); color: white; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 8px;');
     console.log('%c✅ Phase 1: Stop, Timestamps, Copy, Edit, Loading', 'color: #10b981; font-weight: bold;');
     console.log('%c✅ Phase 2: Regenerate Options, Branching, File Preview, TTS, Pull-to-Refresh', 'color: #3b82f6; font-weight: bold;');
     console.log('%c✅ Phase 3: Reactions, Search, Code Themes, Tables, Image Gen', 'color: #8b5cf6; font-weight: bold;');
     console.log('%c✅ Phase 4: Multi-Model AI, Vision, Image Gen, Voice Input, Plugins', 'color: #f59e0b; font-weight: bold;');
-    console.log('%c🏆 ARIA IS NOW 10/10 - PERFECT SCORE! 🏆', 'background: gold; color: black; padding: 8px 16px; font-size: 14px; font-weight: bold;');
+    console.log('%c🏆 QUANTUM AI IS NOW 10/10 - PERFECT SCORE! 🏆', 'background: gold; color: black; padding: 8px 16px; font-size: 14px; font-weight: bold;');
 
     // ✅ FEATURE 2: Timestamp Utility
     function getTimeAgo(timestamp) {
@@ -506,7 +506,7 @@
       return [
         {
           role: 'system',
-          content: `You are ARIA (AI Research & Intelligence Assistant), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
+          content: `You are QUANTUM AI (Advanced Intelligence Platform), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
 Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
 Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
 If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}`
@@ -940,27 +940,27 @@ If the user uploads a document, analyze it thoroughly and answer questions based
     function exportChat(format) {
       if (state.messages.length === 0) { alert('No messages to export.'); return; }
       if (format === 'txt') {
-        const content = '=== ARIA Chat Export ===\nPersonal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL\nBuilt by Mohanraj, Cybersecurity Professional\n' +
+        const content = '=== QUANTUM AI Chat Export ===\nPersonal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL\nBuilt by Kiro AI, Autonomous Development\n' +
           '='.repeat(50) + '\n\n' +
           state.messages.map(m => `[${m.role.toUpperCase()}]\n${m.content}\n`).join('\n' + '-'.repeat(40) + '\n\n');
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'ARIA_Chat_Export.txt'; a.click();
+        const a = document.createElement('a'); a.href = url; a.download = 'QUANTUM_AI_Chat_Export.txt'; a.click();
         URL.revokeObjectURL(url);
       } else if (format === 'html') {
         const rows = state.messages.map(m =>
           `<div style="margin:16px 0;padding:12px;border-radius:8px;background:${m.role==='user'?'#f3f4f6':'#fff'};border:1px solid #e5e7eb">
-            <strong style="color:${m.role==='user'?'#4f46e5':'#ea580c'}">${m.role==='user'?'Velmurugan Sir':'ARIA'}</strong>
+            <strong style="color:${m.role==='user'?'#4f46e5':'#ea580c'}">${m.role==='user'?'Velmurugan Sir':'QUANTUM AI'}</strong>
             <div style="margin-top:8px;white-space:pre-wrap">${m.content}</div>
           </div>`).join('');
-        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ARIA Chat Export</title></head>
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QUANTUM AI Chat Export</title></head>
           <body style="font-family:system-ui;max-width:800px;margin:40px auto;padding:20px">
-          <h2 style="color:#ea580c">ARIA — Chat Export</h2>
-          <p style="color:#6b7280">Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL<br>Built by Mohanraj, Cybersecurity Professional</p>
+          <h2 style="color:#ea580c">QUANTUM AI — Chat Export</h2>
+          <p style="color:#6b7280">Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL<br>Built by Kiro AI, Autonomous Development</p>
           <hr>${rows}</body></html>`;
         const blob = new Blob([html], { type: 'text/html' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'ARIA_Chat_Export.html'; a.click();
+        const a = document.createElement('a'); a.href = url; a.download = 'QUANTUM_AI_Chat_Export.html'; a.click();
         URL.revokeObjectURL(url);
       }
     }
@@ -1872,7 +1872,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       if (!printDiv) { printDiv = document.createElement('div'); printDiv.id = 'printArea'; document.body.appendChild(printDiv); }
       const rows = state.messages.map(m => `
         <div class="${m.role === 'user' ? 'print-msg-user' : 'print-msg-ai'}">
-          <div class="print-label">${m.role === 'user' ? '👤 Velmurugan Sir' : '🤖 ARIA'}</div>
+          <div class="print-label">${m.role === 'user' ? '👤 Velmurugan Sir' : '🤖 QUANTUM AI'}</div>
           <div>${m.content.replace(/\n/g,'<br>')}</div>
         </div>`).join('');
       printDiv.innerHTML = `
@@ -2011,8 +2011,8 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
                   <div class="flex items-center gap-2 mb-3">
-                    ${ariaLogoSVG}
-                    <span class="font-bold text-gray-800 dark:text-gray-100 text-sm">ARIA</span>
+                    ${quantumLogoSVG}
+                    <span class="font-bold text-gray-800 dark:text-gray-100 text-sm">QUANTUM AI</span>
                     <button onclick="state.sidebarExpanded = false; render();" class="ml-auto p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors" title="Collapse sidebar">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </button>
@@ -2022,7 +2022,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                   </button>
                 ` : `
                   <div class="flex flex-col items-center gap-2">
-                    <button onclick="state.sidebarExpanded = true; render();" class="w-8 h-8 flex items-center justify-center" title="Expand sidebar">${ariaLogoSVG}</button>
+                    <button onclick="state.sidebarExpanded = true; render();" class="w-8 h-8 flex items-center justify-center" title="Expand sidebar">${quantumLogoSVG}</button>
                     <button onclick="newChat()" class="w-8 h-8 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="New Chat">
                       ${icons.plus}
                     </button>
