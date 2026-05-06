@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -176,8 +177,12 @@
       currentInput: '',
       uploadedFileContent: null,
       uploadedFileName: null,
+      uploadedFilePageCount: null,
+      uploadedFileWordCount: null,
       isRecording: false,
-      firstRender: true
+      firstRender: true,
+      fileSuggestion: null,
+      fileMemoryOpen: false
     };
 
     // Apply saved dark mode on load
@@ -285,7 +290,8 @@
           role: 'system',
           content: `You are ARIA (AI Research & Intelligence Assistant), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
 Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
-Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}`
+Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
+If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].`
         },
         ...state.messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
@@ -467,6 +473,9 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       state.currentChatId = null;
       state.uploadedFileContent = null;
       state.uploadedFileName = null;
+      state.uploadedFilePageCount = null;
+      state.uploadedFileWordCount = null;
+      state.fileSuggestion = null;
       render();
     }
 
@@ -493,30 +502,210 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
     }
 
     // ── File Upload ───────────────────────────────────────────
-    function handleFileUpload(event) {
+    // Set PDF.js worker
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    async function extractPdfText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            if (typeof pdfjsLib === 'undefined') {
+              resolve({ text: `[PDF uploaded: ${file.name} — ${(file.size/1024).toFixed(1)} KB. PDF.js not loaded.]`, pages: 0 });
+              return;
+            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            const typedArray = new Uint8Array(e.target.result);
+            const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
+            const numPages = pdf.numPages;
+            let fullText = '';
+            for (let i = 1; i <= numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const pageText = content.items.map(item => item.str).join(' ');
+              fullText += `\n--- Page ${i} ---\n${pageText}`;
+            }
+            resolve({ text: fullText.trim(), pages: numPages });
+          } catch (err) {
+            resolve({ text: `[PDF uploaded: ${file.name} — could not extract text: ${err.message}]`, pages: 0 });
+          }
+        };
+        reader.onerror = () => reject(new Error('FileReader error'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function detectFileSuggestions(fileName) {
+      const lower = fileName.toLowerCase();
+      if (lower.includes('meeting') || lower.includes('mom') || lower.includes('minutes')) {
+        return { type: 'meeting', suggestions: ['⏰ Set reminder', '📋 Summarize now', '📌 Pin for quick access'] };
+      } else if (lower.includes('interview') || lower.includes('resume') || lower.includes('cv')) {
+        return { type: 'interview', suggestions: ['🎤 Interview mode', '📌 Pin for quick access', '📋 Summarize now'] };
+      } else if (lower.includes('report') || lower.includes('abt') || lower.includes('data')) {
+        return { type: 'report', suggestions: ['📋 Summarize now', '📌 Pin for quick access', '📊 Analyze data'] };
+      } else {
+        return { type: 'general', suggestions: ['📋 Summarize now', '📌 Pin for quick access'] };
+      }
+    }
+
+    // ── File Memory ───────────────────────────────────────────
+    function getFileMemory() {
+      return JSON.parse(localStorage.getItem('aria_file_memory') || '[]');
+    }
+    function saveFileMemory(files) {
+      localStorage.setItem('aria_file_memory', JSON.stringify(files));
+    }
+    function addToFileMemory(name, content, pageCount, wordCount) {
+      const files = getFileMemory();
+      const id = Date.now().toString();
+      files.unshift({
+        id,
+        name,
+        content: content.slice(0, 8000),
+        uploadDate: new Date().toLocaleString('en-IN'),
+        pageCount: pageCount || 0,
+        wordCount: wordCount || 0,
+        tags: []
+      });
+      // Keep only last 20 files
+      if (files.length > 20) files.splice(20);
+      saveFileMemory(files);
+      return id;
+    }
+    function loadFileFromMemory(fileId) {
+      const files = getFileMemory();
+      const f = files.find(x => x.id === fileId);
+      if (f) {
+        state.uploadedFileName = f.name;
+        state.uploadedFileContent = f.content;
+        state.uploadedFilePageCount = f.pageCount;
+        state.uploadedFileWordCount = f.wordCount;
+        render();
+      }
+    }
+    function deleteFileFromMemory(fileId) {
+      const files = getFileMemory().filter(f => f.id !== fileId);
+      saveFileMemory(files);
+      render();
+    }
+
+    async function handleFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        state.uploadedFileName = file.name;
-        if (file.type === 'text/plain' || file.name.endsWith('.csv')) {
-          state.uploadedFileContent = e.target.result;
-        } else {
-          // For PDF/Word — store as base64 reference, tell ARIA the filename
-          state.uploadedFileContent = `[File uploaded: ${file.name} — ${(file.size/1024).toFixed(1)} KB. Please analyze this file.]`;
-        }
-        render();
-      };
-      if (file.type === 'text/plain' || file.name.endsWith('.csv')) {
-        reader.readAsText(file);
+
+      // Show loading state
+      state.uploadedFileName = file.name + ' (loading...)';
+      state.uploadedFileContent = null;
+      state.uploadedFilePageCount = null;
+      state.uploadedFileWordCount = null;
+      state.fileSuggestion = null;
+      render();
+
+      let extractedText = '';
+      let pageCount = 0;
+
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        // PDF extraction via PDF.js
+        const result = await extractPdfText(file);
+        extractedText = result.text;
+        pageCount = result.pages;
+      } else if (file.type === 'text/plain' || file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
+        // Plain text / CSV
+        extractedText = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsText(file);
+        });
+        pageCount = 1;
+      } else if (file.name.endsWith('.xls') || file.name.endsWith('.xlsx')) {
+        // Excel: read as text (basic extraction)
+        extractedText = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            // Try to extract readable text from binary
+            const raw = e.target.result;
+            const text = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
+            resolve(`[Excel file: ${file.name}]\n${text.slice(0, 6000)}`);
+          };
+          reader.readAsText(file, 'utf-8');
+        });
+        pageCount = 1;
+      } else if (file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
+        // Word: extract readable text
+        extractedText = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const raw = e.target.result;
+            // Extract readable ASCII text from binary
+            const text = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
+            resolve(`[Word document: ${file.name}]\n${text.slice(0, 6000)}`);
+          };
+          reader.readAsBinaryString(file);
+        });
+        pageCount = 1;
       } else {
-        reader.readAsDataURL(file);
+        extractedText = `[File uploaded: ${file.name} — ${(file.size/1024).toFixed(1)} KB. File type not supported for text extraction.]`;
+        pageCount = 0;
       }
+
+      const wordCount = extractedText.split(/\s+/).filter(Boolean).length;
+      const truncated = extractedText.slice(0, 8000);
+
+      state.uploadedFileName = file.name;
+      state.uploadedFileContent = truncated;
+      state.uploadedFilePageCount = pageCount;
+      state.uploadedFileWordCount = wordCount;
+
+      // Save to file memory
+      addToFileMemory(file.name, truncated, pageCount, wordCount);
+
+      // Smart file suggestion
+      const suggestionData = detectFileSuggestions(file.name);
+      state.fileSuggestion = {
+        show: true,
+        fileName: file.name,
+        type: suggestionData.type,
+        suggestions: suggestionData.suggestions
+      };
+
+      render();
     }
 
     function removeFile() {
       state.uploadedFileContent = null;
       state.uploadedFileName = null;
+      state.uploadedFilePageCount = null;
+      state.uploadedFileWordCount = null;
+      state.fileSuggestion = null;
+      render();
+    }
+
+    function dismissFileSuggestion() {
+      state.fileSuggestion = null;
+      render();
+    }
+
+    function handleFileSuggestionAction(action) {
+      state.fileSuggestion = null;
+      if (action === '📋 Summarize now') {
+        const input = document.getElementById('messageInput');
+        if (input) { input.value = 'Please summarize the uploaded document.'; input.focus(); }
+      } else if (action === '⏰ Set reminder') {
+        state.showReminderModal = true;
+      } else if (action === '📌 Pin for quick access') {
+        if (state.uploadedFileContent) {
+          const pins = getPins();
+          pins.unshift({ id: Date.now(), content: `📎 ${state.uploadedFileName}\n\n${state.uploadedFileContent.slice(0, 200)}...`, date: new Date().toLocaleString('en-IN') });
+          savePins(pins);
+        }
+      } else if (action === '🎤 Interview mode') {
+        launchInterviewMode();
+      } else if (action === '📊 Analyze data') {
+        const input = document.getElementById('messageInput');
+        if (input) { input.value = 'Please analyze the data in the uploaded document and provide key insights.'; input.focus(); }
+      }
       render();
     }
 
@@ -549,16 +738,41 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       }
     }
 
+    // ── Web Search Fallback (DuckDuckGo Instant Answer API) ───
+    async function searchWeb(query) {
+      try {
+        const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+        let result = '';
+        if (data.AbstractText) result += data.AbstractText;
+        if (data.Answer) result += (result ? '\n' : '') + data.Answer;
+        if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+          const topics = data.RelatedTopics.slice(0, 3).map(t => t.Text || '').filter(Boolean);
+          if (topics.length > 0) result += (result ? '\n\nRelated: ' : 'Related: ') + topics.join(' | ');
+        }
+        return result || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
     async function sendMessage() {
       const input = document.getElementById('messageInput');
       const content = input.value.trim();
 
       let finalContent = content;
       if (state.uploadedFileContent) {
+        const pageInfo = state.uploadedFilePageCount ? ` | ${state.uploadedFilePageCount} pages` : '';
+        const wordInfo = state.uploadedFileWordCount ? ` | ~${state.uploadedFileWordCount} words` : '';
         finalContent = (content ? content + '\n\n' : 'Please analyze this file:') +
-          `\n\n📎 **File: ${state.uploadedFileName}**\n\`\`\`\n${state.uploadedFileContent.slice(0, 3000)}\n\`\`\``;
+          `\n\n📎 **File: ${state.uploadedFileName}**${pageInfo}${wordInfo}\n\`\`\`\n${state.uploadedFileContent.slice(0, 6000)}\n\`\`\``;
         state.uploadedFileContent = null;
         state.uploadedFileName = null;
+        state.uploadedFilePageCount = null;
+        state.uploadedFileWordCount = null;
+        state.fileSuggestion = null;
       }
 
       if (!finalContent.trim()) return;
@@ -601,10 +815,39 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
           const idx = state.messages.findIndex(m => m.id === aiMsgId);
           if (idx !== -1) { state.messages[idx].content = full; }
           state.isStreaming = false;
-          saveCurrentChat();
-          playChime();
-          render();
-          setTimeout(() => { mermaid.run(); }, 100);
+
+          // Check for [SEARCH_NEEDED: query] pattern
+          const searchMatch = full.match(/\[SEARCH_NEEDED:\s*([^\]]+)\]/i);
+          if (searchMatch) {
+            const searchQuery = searchMatch[1].trim();
+            const msgIdx = state.messages.findIndex(m => m.id === aiMsgId);
+            if (msgIdx !== -1) {
+              state.messages[msgIdx].content = full.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim() + '\n\n⏳ *Searching the web...*';
+              state.messages[msgIdx].webSearchUsed = true;
+            }
+            render();
+            searchWeb(searchQuery).then(webResult => {
+              const mIdx = state.messages.findIndex(m => m.id === aiMsgId);
+              if (mIdx !== -1) {
+                const baseContent = full.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim();
+                if (webResult) {
+                  state.messages[mIdx].content = baseContent + `\n\n---\n🌐 **Web Search Result for "${searchQuery}":**\n${webResult}`;
+                } else {
+                  state.messages[mIdx].content = baseContent + `\n\n*Web search returned no results for "${searchQuery}".*`;
+                }
+                state.messages[mIdx].webSearchUsed = true;
+              }
+              saveCurrentChat();
+              playChime();
+              render();
+              setTimeout(() => mermaid.run(), 100);
+            });
+          } else {
+            saveCurrentChat();
+            playChime();
+            render();
+            setTimeout(() => { mermaid.run(); }, 100);
+          }
         },
         (errMsg) => {
           const idx = state.messages.findIndex(m => m.id === aiMsgId);
@@ -805,16 +1048,20 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       Notification.requestPermission().then(p => { if (p === 'granted' && cb) cb(); });
     }
 
-    function scheduleReminder(text, timeMs) {
+    function scheduleReminder(text, timeMs, fileId) {
       requestNotificationPermission(() => {
         setTimeout(() => {
-          new Notification('⏰ ARIA Reminder', { body: text, icon: '' });
+          const body = fileId ? `⏰ Reminder: Review file now — ${text}` : text;
+          const notif = new Notification('⏰ ARIA Reminder', { body, icon: '' });
+          if (fileId) {
+            notif.onclick = () => { loadFileFromMemory(fileId); window.focus(); };
+          }
           playChime();
         }, timeMs);
       });
     }
 
-    function addReminder(text, timeStr) {
+    function addReminder(text, timeStr, fileId) {
       if (!text || !timeStr) return;
       const now = new Date();
       const [h, m] = timeStr.split(':').map(Number);
@@ -822,9 +1069,11 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       if (target <= now) target.setDate(target.getDate() + 1);
       const diff = target - now;
       const reminders = getReminders();
-      reminders.push({ text, time: timeStr, scheduled: target.toISOString() });
+      const entry = { text, time: timeStr, scheduled: target.toISOString() };
+      if (fileId) entry.fileId = fileId;
+      reminders.push(entry);
       saveReminders(reminders);
-      scheduleReminder(text, diff);
+      scheduleReminder(text, diff, fileId);
       render();
     }
 
@@ -917,6 +1166,30 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                   </div>
                   <div class="border-t border-gray-200 dark:border-gray-800 mb-2"></div>
                 ` : ''}
+
+                <!-- File Memory Section -->
+                ${(() => {
+                  const fileMemory = getFileMemory();
+                  return fileMemory.length > 0 ? `
+                    <div class="mb-3">
+                      <button onclick="state.fileMemoryOpen = !state.fileMemoryOpen; render();" class="w-full flex items-center justify-between px-2 mb-1">
+                        <p class="text-xs font-semibold text-purple-500 dark:text-purple-400 flex items-center gap-1">📁 File Memory <span class="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 rounded-full px-1.5 text-xs">${fileMemory.length}</span></p>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-400 transition-transform ${state.fileMemoryOpen ? 'rotate-180' : ''}"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </button>
+                      ${state.fileMemoryOpen ? fileMemory.slice(0,5).map(f => `
+                        <div class="group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 mb-1 border border-purple-100 dark:border-purple-900/30">
+                          <span class="text-xs">📄</span>
+                          <div class="flex-1 min-w-0" onclick="loadFileFromMemory('${f.id}')">
+                            <p class="text-xs text-gray-600 dark:text-gray-400 truncate">${f.name}</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-600">${f.pageCount ? f.pageCount + 'p · ' : ''}${f.wordCount ? '~' + f.wordCount + 'w · ' : ''}${f.uploadDate.split(',')[0]}</p>
+                          </div>
+                          <button onclick="event.stopPropagation(); deleteFileFromMemory('${f.id}')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs">✕</button>
+                        </div>
+                      `).join('') : ''}
+                    </div>
+                    <div class="border-t border-gray-200 dark:border-gray-800 mb-2"></div>
+                  ` : '';
+                })()}
 
                 ${state.chats.length === 0 ? `
                   <p class="text-xs text-gray-400 dark:text-gray-600 text-center mt-6 px-4">No chat history yet.<br>Start a conversation!</p>
@@ -1075,6 +1348,7 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                           </div>
                           ${msg.role === 'assistant' ? `
                             <div class="flex items-center gap-2 mt-1 flex-wrap">
+                              ${msg.webSearchUsed ? `<span class="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-700">🌐 Web search used</span>` : ''}
                               ${state.settings.wordCount && msg.content ? `
                                 <span class="text-xs text-gray-400 dark:text-gray-600">
                                   ${msg.content.split(/\s+/).filter(Boolean).length} words · ~${Math.ceil(msg.content.split(/\s+/).filter(Boolean).length / 200)} min read
@@ -1118,9 +1392,25 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                 ${state.uploadedFileName ? `
                   <div class="flex items-center gap-2 mb-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-orange-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                    <span class="text-xs text-orange-700 dark:text-orange-300 flex-1 truncate">${state.uploadedFileName}</span>
+                    <span class="text-xs text-orange-700 dark:text-orange-300 flex-1 truncate">${state.uploadedFileName}${state.uploadedFilePageCount ? ` · ${state.uploadedFilePageCount} pages` : ''}${state.uploadedFileWordCount ? ` · ~${state.uploadedFileWordCount} words` : ''}</span>
                     <button onclick="removeFile()" class="text-orange-400 hover:text-red-500 text-xs">✕</button>
                   </div>
+                  ${state.fileSuggestion && state.fileSuggestion.show ? `
+                    <div class="mb-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg animate-fade-in-up">
+                      <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                          <p class="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📄 ${state.fileSuggestion.fileName.length > 40 ? state.fileSuggestion.fileName.slice(0,40)+'…' : state.fileSuggestion.fileName} uploaded!</p>
+                          <p class="text-xs text-blue-600 dark:text-blue-400 mb-2">💡 ARIA suggests: What would you like to do?</p>
+                          <div class="flex flex-wrap gap-1">
+                            ${state.fileSuggestion.suggestions.map(s => `
+                              <button onclick="handleFileSuggestionAction('${s}')" class="px-2 py-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">${s}</button>
+                            `).join('')}
+                          </div>
+                        </div>
+                        <button onclick="dismissFileSuggestion()" class="text-blue-400 hover:text-blue-600 text-xs flex-shrink-0">✕</button>
+                      </div>
+                    </div>
+                  ` : ''}
                 ` : ''}
 
                 <div class="flex items-end gap-2">
