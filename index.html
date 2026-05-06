@@ -80,13 +80,33 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     /* Mobile responsive */
+    .sidebar-wrap {
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+      transition: width 0.3s;
+    }
+    .sidebar-desktop { width: 256px; }
+    .sidebar-desktop.collapsed { width: 48px; }
+
     @media (max-width: 640px) {
-      .sidebar-mobile-hidden { display: none !important; }
-      .mobile-topbar-menu { display: flex !important; }
-      .main-content-full { width: 100% !important; }
+      .sidebar-wrap { display: none; }
+      .sidebar-wrap.mobile-open {
+        display: flex !important;
+        position: fixed;
+        inset: 0;
+        width: 280px !important;
+        z-index: 50;
+      }
+      .mobile-hamburger { display: flex !important; }
+      .desktop-subtitle { display: none; }
+      .input-area { padding: 8px 12px 12px; }
+      .messages-area { padding-bottom: 0; }
     }
     @media (min-width: 641px) {
-      .mobile-topbar-menu { display: none !important; }
+      .mobile-hamburger { display: none !important; }
+      .mobile-overlay { display: none !important; }
     }
 
     /* Daily briefing banner */
@@ -851,13 +871,11 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
         <div class="${state.darkMode ? 'dark' : ''} h-full">
           <div class="h-full flex bg-white dark:bg-gray-900">
 
-            <!-- Mobile Sidebar Overlay -->
-            ${state.mobileSidebarOpen ? `
-              <div class="fixed inset-0 bg-black/50 z-40 sm:hidden" onclick="state.mobileSidebarOpen=false;render();"></div>
-            ` : ''}
+            <!-- Mobile Overlay -->
+            ${state.mobileSidebarOpen ? `<div class="mobile-overlay fixed inset-0 bg-black/50 z-40" onclick="state.mobileSidebarOpen=false;render();"></div>` : ''}
 
             <!-- Chat History Sidebar -->
-            <div class="${state.sidebarExpanded ? 'w-64' : 'w-12'} ${state.mobileSidebarOpen ? 'fixed inset-y-0 left-0 z-50 w-72 flex' : 'hidden sm:flex'} bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex-col transition-all duration-300 overflow-hidden flex-shrink-0">
+            <div class="sidebar-wrap sidebar-desktop ${state.sidebarExpanded ? '' : 'collapsed'} ${state.mobileSidebarOpen ? 'mobile-open' : ''} bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800">
               <!-- Sidebar Header -->
               <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
@@ -963,12 +981,12 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
               <div class="h-14 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center justify-between px-4 flex-shrink-0">
                 <div class="flex items-center gap-3">
                   <!-- Mobile hamburger -->
-                  <button onclick="state.mobileSidebarOpen=true;render();" class="sm:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400">
+                  <button onclick="state.mobileSidebarOpen=true;render();" class="mobile-hamburger p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-400" style="display:none">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                   </button>
                   <div>
                     <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">ARIA</h1>
-                    <p class="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">AI Research & Intelligence Assistant</p>
+                    <p class="desktop-subtitle text-xs text-gray-400 dark:text-gray-500">AI Research & Intelligence Assistant</p>
                   </div>
                 </div>
                 <div class="flex items-center gap-1">
@@ -1095,7 +1113,7 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
               </div>
 
               <!-- Input Area -->
-              <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 flex-shrink-0">
+              <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 sm:px-4 py-3 flex-shrink-0" style="padding-bottom: max(12px, env(safe-area-inset-bottom))">
                 <!-- File preview -->
                 ${state.uploadedFileName ? `
                   <div class="flex items-center gap-2 mb-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
