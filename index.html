@@ -2,7 +2,9 @@
 <html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>ARIA - AI Research & Intelligence Assistant</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -16,6 +18,24 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, sans-serif; }
+
+    /* Fix mobile viewport height — accounts for browser chrome */
+    html, body {
+      height: 100%;
+      height: -webkit-fill-available;
+      overflow: hidden;
+    }
+    body {
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      position: fixed;
+      width: 100%;
+    }
+    #app {
+      height: 100vh;
+      height: 100dvh; /* dynamic viewport height — excludes browser chrome */
+      overflow: hidden;
+    }
 
     .gradient-orange { background: linear-gradient(to bottom right, #fb923c, #f43f5e); }
     .gradient-blue { background: linear-gradient(to bottom right, #3b82f6, #9333ea); }
@@ -102,8 +122,13 @@
       }
       .mobile-hamburger { display: flex !important; }
       .desktop-subtitle { display: none; }
-      .input-area { padding: 8px 12px 12px; }
-      .messages-area { padding-bottom: 0; }
+      
+      /* Fix mobile chat input visibility */
+      #app {
+        height: 100vh;
+        height: 100dvh;
+        max-height: -webkit-fill-available;
+      }
     }
     @media (min-width: 641px) {
       .mobile-hamburger { display: none !important; }
@@ -137,7 +162,7 @@
     tailwind.config = { darkMode: 'class', theme: { extend: {} } }
   </script>
 </head>
-<body class="h-screen overflow-hidden">
+<body class="overflow-hidden">
   <div id="app" class="h-full"></div>
 
   <script>
@@ -1404,7 +1429,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               </div>
 
               <!-- Input Area -->
-              <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 sm:px-4 py-3 flex-shrink-0" style="padding-bottom: max(12px, env(safe-area-inset-bottom))">
+              <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 sm:px-4 py-3 flex-shrink-0" style="padding-bottom: max(16px, env(safe-area-inset-bottom)); padding-bottom: max(16px, calc(env(safe-area-inset-bottom) + 8px))">
                 <!-- File preview -->
                 ${state.uploadedFileName ? `
                   <div class="flex items-center gap-2 mb-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
