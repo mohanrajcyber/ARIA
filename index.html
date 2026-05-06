@@ -182,7 +182,9 @@
       isRecording: false,
       firstRender: true,
       fileSuggestion: null,
-      fileMemoryOpen: false
+      fileMemoryOpen: false,
+      // Persistent file context — stays until new chat
+      activeFileContext: null,  // { name, content, pageCount, wordCount }
     };
 
     // Apply saved dark mode on load
@@ -285,13 +287,18 @@
     }
 
     function buildSystemMessages(userMessage) {
+      const fileCtx = state.activeFileContext;
+      const fileSection = fileCtx
+        ? `\n\nACTIVE DOCUMENT CONTEXT:\nFile: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages)` : ''}${fileCtx.wordCount ? `, ~${fileCtx.wordCount} words` : ''}\n\nFULL DOCUMENT CONTENT:\n\`\`\`\n${fileCtx.content}\n\`\`\`\n\nIMPORTANT: Answer ALL questions using this document content. Quote specific sections when relevant. If the answer is in the document, provide it directly.`
+        : '';
+
       return [
         {
           role: 'system',
           content: `You are ARIA (AI Research & Intelligence Assistant), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
 Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
 Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
-If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].`
+If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}`
         },
         ...state.messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
@@ -476,6 +483,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       state.uploadedFilePageCount = null;
       state.uploadedFileWordCount = null;
       state.fileSuggestion = null;
+      state.activeFileContext = null;
       render();
     }
 
@@ -658,6 +666,14 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       state.uploadedFilePageCount = pageCount;
       state.uploadedFileWordCount = wordCount;
 
+      // Save to persistent active context — stays for all questions in this chat
+      state.activeFileContext = {
+        name: file.name,
+        content: truncated,
+        pageCount,
+        wordCount
+      };
+
       // Save to file memory
       addToFileMemory(file.name, truncated, pageCount, wordCount);
 
@@ -762,12 +778,12 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       const input = document.getElementById('messageInput');
       const content = input.value.trim();
 
+      // Build final content — if file just uploaded, mention it in the message
       let finalContent = content;
       if (state.uploadedFileContent) {
-        const pageInfo = state.uploadedFilePageCount ? ` | ${state.uploadedFilePageCount} pages` : '';
-        const wordInfo = state.uploadedFileWordCount ? ` | ~${state.uploadedFileWordCount} words` : '';
-        finalContent = (content ? content + '\n\n' : 'Please analyze this file:') +
-          `\n\n📎 **File: ${state.uploadedFileName}**${pageInfo}${wordInfo}\n\`\`\`\n${state.uploadedFileContent.slice(0, 6000)}\n\`\`\``;
+        // First message with this file — mention it
+        finalContent = (content ? content : 'Please analyze this uploaded file and be ready to answer questions about it.');
+        // Clear pending upload state (activeFileContext already set)
         state.uploadedFileContent = null;
         state.uploadedFileName = null;
         state.uploadedFilePageCount = null;
@@ -776,8 +792,6 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       }
 
       if (!finalContent.trim()) return;
-
-      // Detect reminder intent
       detectAndSetReminder(finalContent);
 
       const processedContent = processSlashCommand(finalContent);
@@ -1259,7 +1273,11 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                   </button>
                   <div>
                     <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">ARIA</h1>
-                    <p class="desktop-subtitle text-xs text-gray-400 dark:text-gray-500">AI Research & Intelligence Assistant</p>
+                    <p class="desktop-subtitle text-xs text-gray-400 dark:text-gray-500">
+                      ${state.activeFileContext
+                        ? `📄 <span class="text-orange-500 font-medium">${state.activeFileContext.name.length > 30 ? state.activeFileContext.name.slice(0,30)+'…' : state.activeFileContext.name}</span> active · <button onclick="state.activeFileContext=null;render();" class="text-red-400 hover:text-red-600">✕ clear</button>`
+                        : 'AI Research & Intelligence Assistant'}
+                    </p>
                   </div>
                 </div>
                 <div class="flex items-center gap-1">
