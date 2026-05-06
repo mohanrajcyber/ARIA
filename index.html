@@ -291,7 +291,6 @@
       const fileSection = fileCtx
         ? `\n\nACTIVE DOCUMENT CONTEXT:\nFile: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages)` : ''}${fileCtx.wordCount ? `, ~${fileCtx.wordCount} words` : ''}\n\nFULL DOCUMENT CONTENT:\n\`\`\`\n${fileCtx.content}\n\`\`\`\n\nIMPORTANT: Answer ALL questions using this document content. Quote specific sections when relevant. If the answer is in the document, provide it directly.`
         : '';
-
       return [
         {
           role: 'system',
@@ -322,7 +321,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               model: GROQ_MODEL,
               messages: buildSystemMessages(userMessage),
               temperature: 0.7,
-              max_tokens: 2048,
+              max_tokens: state.activeFileContext ? 4096 : 2048,
               stream: true
             })
           });
@@ -571,7 +570,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       files.unshift({
         id,
         name,
-        content: content.slice(0, 8000),
+        content: content.slice(0, 40000),
         uploadDate: new Date().toLocaleString('en-IN'),
         pageCount: pageCount || 0,
         wordCount: wordCount || 0,
@@ -659,7 +658,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       }
 
       const wordCount = extractedText.split(/\s+/).filter(Boolean).length;
-      const truncated = extractedText.slice(0, 8000);
+      const truncated = extractedText.slice(0, 40000); // ~30-40 pages worth
 
       state.uploadedFileName = file.name;
       state.uploadedFileContent = truncated;
