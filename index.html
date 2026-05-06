@@ -2226,7 +2226,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                 ontouchstart="handleTouchStart(event)" 
                 ontouchmove="handleTouchMove(event)" 
                 ontouchend="handleTouchEnd()">
-                ${state.messages.length === 0 && (!window.innerWidth || window.innerWidth >= 768 || !state.settings.hideWelcomeOnMobile) ? `
+                ${state.messages.length === 0 ? `
                   <div class="flex flex-col items-center justify-center h-full px-6 welcome-container">
                     <div class="max-w-2xl w-full">
 
