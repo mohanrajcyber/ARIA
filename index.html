@@ -1359,6 +1359,12 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       // Scroll to bottom
       const area = document.getElementById('messagesArea');
       if (area) setTimeout(() => area.scrollTop = area.scrollHeight, 50);
+
+      // Keep focus on input
+      setTimeout(() => {
+        const inp = document.getElementById('messageInput');
+        if (inp) inp.focus();
+      }, 60);
     }
 
     // ── Slash Command Hint ────────────────────────────────────
