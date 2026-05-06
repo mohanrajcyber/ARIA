@@ -24,36 +24,39 @@
       0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8,0,1,1); }
       50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); }
     }
-
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes staggerIn { from { opacity:0; transform:translateY(12px) scale(0.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes typewriter { from{width:0} to{width:100%} }
 
     .animate-bounce { animation: bounce 1s infinite; }
     .animate-spin { animation: spin 1s linear infinite; }
+    .animate-fade-in-up { animation: fadeInUp 0.6s ease both; }
+    .streaming-cursor::after { content:'▋'; display:inline-block; animation:blink 0.7s step-end infinite; color:#fb923c; margin-left:2px; }
+
+    /* Welcome animations */
+    .welcome-logo { animation: fadeInUp 0.5s ease both; }
+    .welcome-title { animation: fadeInUp 0.6s 0.15s ease both; opacity:0; animation-fill-mode:forwards; }
+    .welcome-sub { animation: fadeInUp 0.6s 0.3s ease both; opacity:0; animation-fill-mode:forwards; }
+    .quick-prompt-card { opacity:0; animation: staggerIn 0.5s ease forwards; }
 
     /* Scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: #f1f1f1; }
     ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-    /* Dark mode scrollbar */
     .dark ::-webkit-scrollbar-track { background: #2d2d2d; }
     .dark ::-webkit-scrollbar-thumb { background: #555; }
     .dark ::-webkit-scrollbar-thumb:hover { background: #777; }
 
     /* Modal backdrop */
     .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 50;
-      padding: 1rem;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; padding: 1rem;
     }
 
-    /* Hidden class */
     .hidden { display: none !important; }
 
     /* Markdown styles */
@@ -71,23 +74,36 @@
     .markdown-content em { font-style: italic; }
     .markdown-content blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; font-style: italic; margin: 0.75rem 0; }
     .markdown-content a { color: #2563eb; text-decoration: underline; }
-
     .dark .markdown-content code { background: #374151; color: #fda4af; }
     .dark .markdown-content blockquote { border-color: #4b5563; }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* Daily briefing banner */
+    .briefing-banner {
+      animation: fadeInUp 0.5s ease both;
+      background: linear-gradient(135deg, rgba(251,146,60,0.12), rgba(244,63,94,0.08));
+      border: 1px solid rgba(251,146,60,0.3);
+    }
+
+    /* Print styles */
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea {
+        position: fixed; left: 0; top: 0; width: 100%;
+        background: white; color: black; padding: 20px;
+        font-family: Georgia, serif;
+      }
+      .print-header { text-align: center; border-bottom: 2px solid #fb923c; padding-bottom: 12px; margin-bottom: 20px; }
+      .print-msg-user { background: #f3f4f6; padding: 10px 14px; border-radius: 8px; margin: 8px 0; }
+      .print-msg-ai { padding: 10px 14px; border-left: 3px solid #fb923c; margin: 8px 0; }
+      .print-label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #6b7280; margin-bottom: 4px; }
     }
   </style>
 
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {}
-      }
-    }
+    tailwind.config = { darkMode: 'class', theme: { extend: {} } }
   </script>
 </head>
 <body class="h-screen overflow-hidden">
@@ -104,12 +120,19 @@
       chats: JSON.parse(localStorage.getItem('aria_chats') || '[]'),
       currentChatId: null,
       isTyping: false,
+      isStreaming: false,
       sidebarExpanded: true,
       showTemplates: false,
       showAnalytics: false,
       showSettings: false,
       showInterview: false,
       interviewMinimized: false,
+      showNotes: false,
+      showSummary: false,
+      summaryContent: '',
+      showPinnedModal: false,
+      pinnedModalContent: '',
+      showReminderModal: false,
       // Settings / Preferences
       settings: JSON.parse(localStorage.getItem('aria_settings') || JSON.stringify({
         language: 'english',
@@ -122,7 +145,8 @@
       currentInput: '',
       uploadedFileContent: null,
       uploadedFileName: null,
-      isRecording: false
+      isRecording: false,
+      firstRender: true
     };
 
     // Apply saved dark mode on load
@@ -198,7 +222,21 @@
     const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-    async function generateResponse(userMessage) {
+    function buildSystemMessages(userMessage) {
+      return [
+        {
+          role: 'system',
+          content: `You are ARIA (AI Research & Intelligence Assistant), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
+Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
+Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}`
+        },
+        ...state.messages.map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage }
+      ];
+    }
+
+    // Streaming response (ChatGPT style)
+    async function generateResponseStreaming(userMessage, onChunk, onDone, onError) {
       try {
         const response = await fetch(GROQ_API_URL, {
           method: 'POST',
@@ -208,18 +246,10 @@
           },
           body: JSON.stringify({
             model: GROQ_MODEL,
-            messages: [
-              {
-                role: 'system',
-                content: `You are ARIA (AI Research & Intelligence Assistant), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
-Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
-Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}`
-              },
-              ...state.messages.map(m => ({ role: m.role, content: m.content })),
-              { role: 'user', content: userMessage }
-            ],
+            messages: buildSystemMessages(userMessage),
             temperature: 0.7,
-            max_tokens: 2048
+            max_tokens: 2048,
+            stream: true
           })
         });
 
@@ -228,9 +258,57 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
           throw new Error(err.error?.message || 'API request failed');
         }
 
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') { onDone(fullText); return; }
+              try {
+                const parsed = JSON.parse(data);
+                const token = parsed.choices?.[0]?.delta?.content || '';
+                if (token) { fullText += token; onChunk(fullText); }
+              } catch(e) {}
+            }
+          }
+        }
+        onDone(fullText);
+      } catch (error) {
+        console.error('GROQ API Error:', error);
+        onError(`⚠️ **Error:** ${error.message}\n\nPlease try again.`);
+      }
+    }
+
+    // Non-streaming fallback (used for summary)
+    async function generateResponse(userMessage, customMessages) {
+      try {
+        const messages = customMessages || buildSystemMessages(userMessage);
+        const response = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${GROQ_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages,
+            temperature: 0.7,
+            max_tokens: 2048
+          })
+        });
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error?.message || 'API request failed');
+        }
         const data = await response.json();
         return data.choices[0].message.content;
-
       } catch (error) {
         console.error('GROQ API Error:', error);
         return `⚠️ **Error:** ${error.message}\n\nPlease try again.`;
@@ -406,35 +484,56 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
 
       if (!finalContent.trim()) return;
 
+      // Detect reminder intent
+      detectAndSetReminder(finalContent);
+
       const processedContent = processSlashCommand(finalContent);
 
-      const userMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: processedContent
-      };
-
+      const userMessage = { id: Date.now(), role: 'user', content: processedContent };
       state.messages.push(userMessage);
       state.isTyping = true;
+      state.isStreaming = false;
       input.value = '';
       state.currentInput = '';
       render();
 
-      // Real AI response from GROQ
-      const aiContent = await generateResponse(processedContent);
-      const aiMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: aiContent
-      };
+      // Streaming AI response
+      const aiMsgId = Date.now() + 1;
+      const aiMessage = { id: aiMsgId, role: 'assistant', content: '' };
       state.messages.push(aiMessage);
       state.isTyping = false;
-      saveCurrentChat();
-      playChime();
+      state.isStreaming = true;
       render();
 
-      // Render mermaid diagrams
-      setTimeout(() => { mermaid.run(); }, 100);
+      await generateResponseStreaming(
+        processedContent,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = partial; }
+          // Update streaming message in DOM without full re-render
+          const streamEl = document.getElementById('streaming-msg-' + aiMsgId);
+          if (streamEl) {
+            streamEl.innerHTML = formatMarkdown(partial);
+          }
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = full; }
+          state.isStreaming = false;
+          saveCurrentChat();
+          playChime();
+          render();
+          setTimeout(() => { mermaid.run(); }, 100);
+        },
+        (errMsg) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = errMsg; }
+          state.isStreaming = false;
+          render();
+        }
+      );
     }
 
     function copyMessage(content) {
@@ -443,24 +542,43 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
 
     async function regenerate() {
       if (state.messages.length < 2) return;
-
-      state.messages.pop(); // Remove last AI response
+      state.messages.pop();
       state.isTyping = true;
+      state.isStreaming = false;
       render();
 
       const lastUserMsg = state.messages.filter(m => m.role === 'user').pop();
-
-      const aiContent = await generateResponse(lastUserMsg.content);
-      const aiMessage = {
-        id: Date.now(),
-        role: 'assistant',
-        content: aiContent
-      };
+      const aiMsgId = Date.now();
+      const aiMessage = { id: aiMsgId, role: 'assistant', content: '' };
       state.messages.push(aiMessage);
       state.isTyping = false;
+      state.isStreaming = true;
       render();
 
-      setTimeout(() => mermaid.run(), 100);
+      await generateResponseStreaming(
+        lastUserMsg.content,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = partial; }
+          const streamEl = document.getElementById('streaming-msg-' + aiMsgId);
+          if (streamEl) streamEl.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = full; }
+          state.isStreaming = false;
+          render();
+          setTimeout(() => mermaid.run(), 100);
+        },
+        (errMsg) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) { state.messages[idx].content = errMsg; }
+          state.isStreaming = false;
+          render();
+        }
+      );
     }
 
 
@@ -473,8 +591,203 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
       }
     });
 
+    // ── ARIA SVG Logo ─────────────────────────────────────────
+    const ariaLogoSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 40 40">
+      <defs>
+        <linearGradient id="ariaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#fb923c"/>
+          <stop offset="100%" style="stop-color:#f43f5e"/>
+        </linearGradient>
+      </defs>
+      <circle cx="20" cy="20" r="19" fill="url(#ariaGrad)" opacity="0.15"/>
+      <circle cx="20" cy="20" r="19" fill="none" stroke="url(#ariaGrad)" stroke-width="1.5"/>
+      <!-- Stylized A -->
+      <path d="M20 8 L30 30 H26 L23.5 24 H16.5 L14 30 H10 Z" fill="url(#ariaGrad)" stroke="none"/>
+      <path d="M17.5 21 H22.5 L20 15 Z" fill="white" opacity="0.9"/>
+      <!-- Circuit dots -->
+      <circle cx="8" cy="20" r="1.5" fill="#fb923c" opacity="0.7"/>
+      <circle cx="32" cy="20" r="1.5" fill="#f43f5e" opacity="0.7"/>
+      <line x1="9.5" y1="20" x2="13" y2="20" stroke="#fb923c" stroke-width="1" opacity="0.5"/>
+      <line x1="27" y1="20" x2="30.5" y2="20" stroke="#f43f5e" stroke-width="1" opacity="0.5"/>
+    </svg>`;
+
+    const ariaLogoLargeSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+      <defs>
+        <linearGradient id="ariaGradL" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#fb923c"/>
+          <stop offset="100%" style="stop-color:#f43f5e"/>
+        </linearGradient>
+      </defs>
+      <circle cx="20" cy="20" r="19" fill="url(#ariaGradL)" opacity="0.15"/>
+      <circle cx="20" cy="20" r="19" fill="none" stroke="url(#ariaGradL)" stroke-width="1.5"/>
+      <path d="M20 8 L30 30 H26 L23.5 24 H16.5 L14 30 H10 Z" fill="url(#ariaGradL)" stroke="none"/>
+      <path d="M17.5 21 H22.5 L20 15 Z" fill="white" opacity="0.9"/>
+      <circle cx="8" cy="20" r="1.5" fill="#fb923c" opacity="0.7"/>
+      <circle cx="32" cy="20" r="1.5" fill="#f43f5e" opacity="0.7"/>
+      <line x1="9.5" y1="20" x2="13" y2="20" stroke="#fb923c" stroke-width="1" opacity="0.5"/>
+      <line x1="27" y1="20" x2="30.5" y2="20" stroke="#f43f5e" stroke-width="1" opacity="0.5"/>
+    </svg>`;
+
+    // ── Pinned Messages ───────────────────────────────────────
+    function getPins() {
+      return JSON.parse(localStorage.getItem('aria_pins') || '[]');
+    }
+    function savePins(pins) {
+      localStorage.setItem('aria_pins', JSON.stringify(pins));
+    }
+    function pinMessage(msgId, content) {
+      const pins = getPins();
+      const existing = pins.findIndex(p => p.id === msgId);
+      if (existing !== -1) {
+        pins.splice(existing, 1);
+      } else {
+        pins.unshift({ id: msgId, content, date: new Date().toLocaleString('en-IN') });
+      }
+      savePins(pins);
+      render();
+    }
+    function isMessagePinned(msgId) {
+      return getPins().some(p => p.id === msgId);
+    }
+    function showPinnedContent(content) {
+      state.pinnedModalContent = content;
+      state.showPinnedModal = true;
+      render();
+    }
+    function scrollToMessage(msgId) {
+      const el = document.getElementById('msg-' + msgId);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.outline = '2px solid #fb923c'; setTimeout(() => el.style.outline = '', 1500); }
+      state.showPinnedModal = false;
+      render();
+    }
+
+    // ── Print / PDF Export ────────────────────────────────────
+    function printChat() {
+      if (state.messages.length === 0) { alert('No messages to print.'); return; }
+      let printDiv = document.getElementById('printArea');
+      if (!printDiv) { printDiv = document.createElement('div'); printDiv.id = 'printArea'; document.body.appendChild(printDiv); }
+      const rows = state.messages.map(m => `
+        <div class="${m.role === 'user' ? 'print-msg-user' : 'print-msg-ai'}">
+          <div class="print-label">${m.role === 'user' ? '👤 Velmurugan Sir' : '🤖 ARIA'}</div>
+          <div>${m.content.replace(/\n/g,'<br>')}</div>
+        </div>`).join('');
+      printDiv.innerHTML = `
+        <div class="print-header">
+          <h2 style="color:#fb923c;font-size:22px;margin-bottom:4px;">ARIA — AI Research & Intelligence Assistant</h2>
+          <p style="color:#6b7280;font-size:12px;">Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL &nbsp;|&nbsp; Built by Mohanraj</p>
+          <p style="color:#9ca3af;font-size:11px;">Printed: ${new Date().toLocaleString('en-IN')}</p>
+        </div>
+        ${rows}`;
+      window.print();
+    }
+
+    // ── Daily Briefing ────────────────────────────────────────
+    function getDailyBriefing() {
+      if (sessionStorage.getItem('aria_briefing_dismissed')) return null;
+      const now = new Date();
+      const hour = now.getHours();
+      const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const dayName = days[now.getDay()];
+      const dateStr = `${dayName}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+      const motivations = [
+        'Every challenge is an opportunity to lead with excellence.',
+        'Your expertise shapes the future of NLCIL.',
+        'Great leaders inspire through action and wisdom.',
+        'Today is a new opportunity to make a difference.',
+        'Excellence is not a destination but a continuous journey.'
+      ];
+      const motivation = motivations[now.getDay() % motivations.length];
+      return { greeting, dateStr, motivation };
+    }
+    function dismissBriefing() {
+      sessionStorage.setItem('aria_briefing_dismissed', '1');
+      const el = document.getElementById('dailyBriefing');
+      if (el) { el.style.opacity = '0'; el.style.transform = 'translateY(-10px)'; el.style.transition = 'all 0.3s'; setTimeout(() => el.remove(), 300); }
+    }
+
+    // ── Quick Notes ───────────────────────────────────────────
+    let notesDebounceTimer = null;
+    function getNotes() { return localStorage.getItem('aria_notes') || ''; }
+    function saveNotes(val) { localStorage.setItem('aria_notes', val); }
+    function onNotesInput(val) {
+      clearTimeout(notesDebounceTimer);
+      notesDebounceTimer = setTimeout(() => saveNotes(val), 500);
+    }
+
+    // ── Reminders ─────────────────────────────────────────────
+    function getReminders() { return JSON.parse(localStorage.getItem('aria_reminders') || '[]'); }
+    function saveReminders(r) { localStorage.setItem('aria_reminders', JSON.stringify(r)); }
+
+    function requestNotificationPermission(cb) {
+      if (!('Notification' in window)) { alert('Notifications not supported in this browser.'); return; }
+      if (Notification.permission === 'granted') { cb && cb(); return; }
+      Notification.requestPermission().then(p => { if (p === 'granted' && cb) cb(); });
+    }
+
+    function scheduleReminder(text, timeMs) {
+      requestNotificationPermission(() => {
+        setTimeout(() => {
+          new Notification('⏰ ARIA Reminder', { body: text, icon: '' });
+          playChime();
+        }, timeMs);
+      });
+    }
+
+    function addReminder(text, timeStr) {
+      if (!text || !timeStr) return;
+      const now = new Date();
+      const [h, m] = timeStr.split(':').map(Number);
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      const diff = target - now;
+      const reminders = getReminders();
+      reminders.push({ text, time: timeStr, scheduled: target.toISOString() });
+      saveReminders(reminders);
+      scheduleReminder(text, diff);
+      render();
+    }
+
+    function deleteReminder(idx) {
+      const r = getReminders(); r.splice(idx, 1); saveReminders(r); render();
+    }
+
+    // Natural language reminder detection
+    function detectAndSetReminder(text) {
+      const lower = text.toLowerCase();
+      const match = lower.match(/remind\s+me\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(?:about\s+)?(.+)/i);
+      if (!match) return;
+      let hour = parseInt(match[1]);
+      const min = parseInt(match[2] || '0');
+      const ampm = match[3];
+      const about = match[4] ? match[4].replace(/[.!?].*/, '').trim() : 'your reminder';
+      if (ampm === 'pm' && hour < 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+      const timeStr = `${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+      addReminder(about, timeStr);
+    }
+
+    // ── Conversation Summary ──────────────────────────────────
+    async function summarizeConversation() {
+      if (state.messages.length === 0) { alert('No conversation to summarize.'); return; }
+      state.showSummary = true;
+      state.summaryContent = '⏳ Generating summary...';
+      render();
+      const convo = state.messages.map(m => `${m.role === 'user' ? 'User' : 'ARIA'}: ${m.content}`).join('\n\n');
+      const summary = await generateResponse('', [
+        { role: 'system', content: 'You are a helpful assistant. Summarize the following conversation concisely in bullet points, highlighting key topics, decisions, and action items.' },
+        { role: 'user', content: `Please summarize this conversation:\n\n${convo}` }
+      ]);
+      state.summaryContent = summary;
+      render();
+    }
+
     // Main Render Function
     function render() {
+      const pins = getPins();
+      const briefing = state.messages.length === 0 ? getDailyBriefing() : null;
+
       document.getElementById('app').innerHTML = `
         <div class="${state.darkMode ? 'dark' : ''} h-full">
           <div class="h-full flex bg-white dark:bg-gray-900">
@@ -485,7 +798,7 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
               <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
                   <div class="flex items-center gap-2 mb-3">
-                    <div class="w-7 h-7 gradient-orange rounded-full flex-shrink-0"></div>
+                    ${ariaLogoSVG}
                     <span class="font-bold text-gray-800 dark:text-gray-100 text-sm">ARIA</span>
                     <button onclick="state.sidebarExpanded = false; render();" class="ml-auto p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors" title="Collapse sidebar">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -496,7 +809,7 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                   </button>
                 ` : `
                   <div class="flex flex-col items-center gap-2">
-                    <button onclick="state.sidebarExpanded = true; render();" class="w-8 h-8 gradient-orange rounded-full flex items-center justify-center text-white font-bold text-sm" title="Expand sidebar">A</button>
+                    <button onclick="state.sidebarExpanded = true; render();" class="w-8 h-8 flex items-center justify-center" title="Expand sidebar">${ariaLogoSVG}</button>
                     <button onclick="newChat()" class="w-8 h-8 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="New Chat">
                       ${icons.plus}
                     </button>
@@ -507,6 +820,22 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
               <!-- Chat List -->
               ${state.sidebarExpanded ? `
               <div class="flex-1 overflow-y-auto p-2">
+
+                <!-- Pinned Messages Section -->
+                ${pins.length > 0 ? `
+                  <div class="mb-3">
+                    <p class="text-xs font-semibold text-orange-500 dark:text-orange-400 px-2 mb-1 flex items-center gap-1">📌 Pinned</p>
+                    ${pins.slice(0,3).map(pin => `
+                      <div class="px-2 py-1.5 rounded-lg cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 mb-1 border border-orange-100 dark:border-orange-900/30"
+                        onclick="showPinnedContent(${JSON.stringify(pin.content).replace(/"/g,'&quot;')})">
+                        <p class="text-xs text-gray-600 dark:text-gray-400 truncate">${pin.content.slice(0,60)}...</p>
+                        <p class="text-xs text-gray-400 dark:text-gray-600">${pin.date}</p>
+                      </div>
+                    `).join('')}
+                  </div>
+                  <div class="border-t border-gray-200 dark:border-gray-800 mb-2"></div>
+                ` : ''}
+
                 ${state.chats.length === 0 ? `
                   <p class="text-xs text-gray-400 dark:text-gray-600 text-center mt-6 px-4">No chat history yet.<br>Start a conversation!</p>
                 ` : state.chats.map(chat => `
@@ -528,6 +857,12 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
               <!-- Sidebar Footer -->
               <div class="p-2 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
+                  <button onclick="state.showNotes = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors text-sm text-yellow-600 dark:text-yellow-400 mb-1">
+                    <span>📝</span><span>Notes</span>
+                  </button>
+                  <button onclick="state.showReminderModal = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-sm text-blue-600 dark:text-blue-400 mb-1">
+                    <span>⏰</span><span>Reminders</span>
+                  </button>
                   <button onclick="state.showSettings = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm text-gray-600 dark:text-gray-400 mb-1">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     <span>Settings</span>
@@ -542,6 +877,8 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                   </button>
                 ` : `
                   <div class="flex flex-col items-center gap-1">
+                    <button onclick="state.showNotes = true; render();" class="w-8 h-8 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 flex items-center justify-center transition-colors text-yellow-600 dark:text-yellow-400 mx-auto text-base" title="Notes">📝</button>
+                    <button onclick="state.showReminderModal = true; render();" class="w-8 h-8 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 flex items-center justify-center transition-colors text-blue-600 dark:text-blue-400 mx-auto text-base" title="Reminders">⏰</button>
                     <button onclick="launchInterviewMode()" class="w-8 h-8 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 flex items-center justify-center transition-colors text-green-600 dark:text-green-400 mx-auto" title="Interview Mode">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     </button>
@@ -565,6 +902,12 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                   <p class="text-xs text-gray-400 dark:text-gray-500">AI Research & Intelligence Assistant</p>
                 </div>
                 <div class="flex items-center gap-1">
+                  <button onclick="summarizeConversation()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Summarize Conversation">
+                    <span class="text-base">📊</span>
+                  </button>
+                  <button onclick="printChat()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Print / PDF Export">
+                    <span class="text-base">🖨️</span>
+                  </button>
                   <button onclick="state.showTemplates = true; render();" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="NLCIL Templates">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                   </button>
@@ -582,13 +925,27 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                 ${state.messages.length === 0 ? `
                   <div class="flex flex-col items-center justify-center h-full px-6">
                     <div class="max-w-2xl w-full">
-                      <div class="flex items-center justify-center gap-3 mb-3">
-                        <div class="w-10 h-10 gradient-orange rounded-full flex items-center justify-center text-white font-bold text-lg">A</div>
-                        <h1 class="text-3xl text-gray-800 dark:text-gray-100">
+
+                      <!-- Daily Briefing Banner -->
+                      ${briefing ? `
+                        <div id="dailyBriefing" class="briefing-banner rounded-xl p-3 mb-6 flex items-start gap-3">
+                          <span class="text-2xl flex-shrink-0">☀️</span>
+                          <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-orange-700 dark:text-orange-300">${briefing.greeting}, Velmurugan Sir!</p>
+                            <p class="text-xs text-gray-600 dark:text-gray-400">Today is ${briefing.dateStr}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 italic mt-0.5">${briefing.motivation}</p>
+                          </div>
+                          <button onclick="dismissBriefing()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 text-lg leading-none">×</button>
+                        </div>
+                      ` : ''}
+
+                      <div class="flex items-center justify-center gap-3 mb-3 welcome-logo">
+                        ${ariaLogoLargeSVG}
+                        <h1 class="text-3xl text-gray-800 dark:text-gray-100 welcome-title">
                           Hello, <span class="font-serif">Velmurugan Sir</span>
                         </h1>
                       </div>
-                      <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-8">Your Personal AI Assistant — ARIA</p>
+                      <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-8 welcome-sub">Your Personal AI Assistant — ARIA</p>
 
                       <!-- NLCIL Quick Prompts -->
                       <div class="grid grid-cols-2 gap-3 max-w-xl mx-auto">
@@ -599,9 +956,10 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                           { icon: '⚡', label: 'ABT Report', prompt: 'Generate an ABT (Availability Based Tariff) report summary for NLCIL Thermal Power Station. Include key metrics and observations.' },
                           { icon: '🔒', label: 'Cybersecurity Advisory', prompt: 'Draft a cybersecurity advisory notice for NLCIL CS Division regarding ' },
                           { icon: '📝', label: 'Office Note / DO Letter', prompt: 'Draft a DO (Demi-Official) letter from DGM CS Division regarding ' }
-                        ].map(q => `
+                        ].map((q, i) => `
                           <button onclick="document.getElementById('messageInput').value = \`${q.prompt}\`; document.getElementById('messageInput').focus();"
-                            class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/10 transition-all text-left">
+                            class="quick-prompt-card flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/10 transition-all text-left"
+                            style="animation-delay:${0.4 + i * 0.08}s">
                             <span class="text-xl">${q.icon}</span>
                             <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">${q.label}</span>
                           </button>
@@ -611,28 +969,37 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                   </div>
                 ` : `
                   <div class="max-w-3xl mx-auto px-6 py-6">
-                    ${state.messages.map(msg => `
-                      <div class="flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-5">
+                    ${state.messages.map((msg, msgIdx) => {
+                      const isLastMsg = msgIdx === state.messages.length - 1;
+                      const isStreamingMsg = state.isStreaming && isLastMsg && msg.role === 'assistant';
+                      const safeContent = msg.content.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n');
+                      const isPinned = isMessagePinned(msg.id);
+                      return `
+                      <div id="msg-${msg.id}" class="flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-5">
                         ${msg.role === 'assistant' ? `
-                          <div class="w-8 h-8 rounded-full gradient-orange flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">A</div>
+                          <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${ariaLogoSVG}</div>
                         ` : ''}
                         <div class="max-w-2xl">
                           <div class="${msg.role === 'user' ? 'rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-800 dark:text-gray-200'} ${getFontSizeClass()}">
-                            ${msg.role === 'assistant' ? `<div class="markdown-content">${formatMarkdown(msg.content)}</div>`
+                            ${msg.role === 'assistant'
+                              ? `<div id="streaming-msg-${msg.id}" class="markdown-content${isStreamingMsg ? ' streaming-cursor' : ''}">${formatMarkdown(msg.content)}</div>`
                               : `<p class="whitespace-pre-wrap leading-relaxed">${msg.content}</p>`}
                           </div>
                           ${msg.role === 'assistant' ? `
                             <div class="flex items-center gap-2 mt-1 flex-wrap">
-                              ${state.settings.wordCount ? `
+                              ${state.settings.wordCount && msg.content ? `
                                 <span class="text-xs text-gray-400 dark:text-gray-600">
-                                  ${msg.content.split(/\s+/).length} words · ~${Math.ceil(msg.content.split(/\s+/).length / 200)} min read
+                                  ${msg.content.split(/\s+/).filter(Boolean).length} words · ~${Math.ceil(msg.content.split(/\s+/).filter(Boolean).length / 200)} min read
                                 </span>
                               ` : ''}
-                              <button onclick="copyMessage('${msg.content.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n')}'); this.innerHTML='✓ Copied'" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 text-xs flex items-center gap-1">
+                              <button onclick="copyMessage('${safeContent}'); this.innerHTML='✓ Copied'" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 text-xs flex items-center gap-1">
                                 ${icons.copy} Copy
                               </button>
                               <button onclick="regenerate()" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 text-xs">
                                 ${icons.refresh}
+                              </button>
+                              <button onclick="pinMessage(${msg.id}, '${safeContent}')" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-xs ${isPinned ? 'text-orange-500' : 'text-gray-400'}" title="${isPinned ? 'Unpin' : 'Pin message'}">
+                                📌
                               </button>
                             </div>
                           ` : ''}
@@ -640,11 +1007,11 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                         ${msg.role === 'user' ? `
                           <div class="w-8 h-8 rounded-full gradient-blue flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">V</div>
                         ` : ''}
-                      </div>
-                    `).join('')}
+                      </div>`;
+                    }).join('')}
                     ${state.isTyping ? `
                       <div class="flex gap-3 mb-5">
-                        <div class="w-8 h-8 rounded-full gradient-orange flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">A</div>
+                        <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${ariaLogoSVG}</div>
                         <div class="flex gap-1 items-center px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl">
                           <span class="text-xs text-gray-500 dark:text-gray-400 mr-2">ARIA is thinking...</span>
                           <div class="w-2 h-2 bg-orange-400 rounded-full animate-bounce"></div>
@@ -725,6 +1092,88 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
                       <span class="text-sm font-medium text-gray-800 dark:text-gray-100">${t.name}</span>
                     </button>
                   `).join('')}
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Notes Modal -->
+          ${state.showNotes ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showNotes=false;render();}">
+              <div class="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">📝 Quick Notes</h2>
+                  <button onclick="state.showNotes=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                </div>
+                <div class="p-4">
+                  <textarea id="notesTextarea" oninput="onNotesInput(this.value)"
+                    class="w-full h-64 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 outline-none resize-none focus:border-orange-300"
+                    placeholder="Jot down your notes here... Auto-saved as you type.">${getNotes()}</textarea>
+                  <p class="text-xs text-gray-400 dark:text-gray-600 mt-2">💾 Auto-saved to local storage</p>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Reminders Modal -->
+          ${state.showReminderModal ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showReminderModal=false;render();}">
+              <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">⏰ Reminders</h2>
+                  <button onclick="state.showReminderModal=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                </div>
+                <div class="p-4 space-y-4">
+                  <div class="flex gap-2">
+                    <input id="reminderText" type="text" placeholder="Reminder text..." class="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-orange-300">
+                    <input id="reminderTime" type="time" class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-orange-300">
+                    <button onclick="addReminder(document.getElementById('reminderText').value, document.getElementById('reminderTime').value); document.getElementById('reminderText').value='';"
+                      class="px-3 py-2 gradient-orange text-white rounded-lg text-sm font-medium hover:opacity-90">Add</button>
+                  </div>
+                  <div class="space-y-2 max-h-48 overflow-y-auto">
+                    ${getReminders().length === 0 ? `<p class="text-xs text-gray-400 dark:text-gray-600 text-center py-4">No reminders set. Add one above or say "remind me at 3pm about meeting" in chat.</p>` :
+                      getReminders().map((r, i) => `
+                        <div class="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <span class="text-base">⏰</span>
+                          <div class="flex-1 min-w-0">
+                            <p class="text-sm text-gray-800 dark:text-gray-200 truncate">${r.text}</p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500">${r.time}</p>
+                          </div>
+                          <button onclick="deleteReminder(${i})" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        </div>
+                      `).join('')}
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-gray-600">💡 Tip: Type "remind me at 3pm about meeting" in chat to auto-set reminders.</p>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Summary Modal -->
+          ${state.showSummary ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showSummary=false;render();}">
+              <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">📊 Conversation Summary</h2>
+                  <button onclick="state.showSummary=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                </div>
+                <div class="p-5 max-h-[70vh] overflow-y-auto">
+                  <div class="markdown-content text-gray-800 dark:text-gray-200 text-sm">${formatMarkdown(state.summaryContent)}</div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Pinned Message Modal -->
+          ${state.showPinnedModal ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showPinnedModal=false;render();}">
+              <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">📌 Pinned Message</h2>
+                  <button onclick="state.showPinnedModal=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                </div>
+                <div class="p-5 max-h-[70vh] overflow-y-auto">
+                  <div class="markdown-content text-gray-800 dark:text-gray-200 text-sm">${formatMarkdown(state.pinnedModalContent)}</div>
                 </div>
               </div>
             </div>
@@ -851,7 +1300,13 @@ Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet poi
 
     // Initial render
     render();
+
+    // Auto-dismiss daily briefing after 8 seconds
+    setTimeout(() => {
+      if (!sessionStorage.getItem('aria_briefing_dismissed')) {
+        dismissBriefing();
+      }
+    }, 8000);
   </script>
 </body>
-</html>
 </html>
