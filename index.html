@@ -1813,9 +1813,8 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       </defs>
       <circle cx="20" cy="20" r="19" fill="url(#quantumGrad)" opacity="0.15"/>
       <circle cx="20" cy="20" r="19" fill="none" stroke="url(#quantumGrad)" stroke-width="1.5"/>
-      <!-- Stylized Q -->
-      <path d="M20 8 L30 30 H26 L23.5 24 H16.5 L14 30 H10 Z" fill="url(#quantumGrad)" stroke="none"/>
-      <path d="M17.5 21 H22.5 L20 15 Z" fill="white" opacity="0.9"/>
+      <!-- Letter Q -->
+      <text x="20" y="28" font-size="24" font-weight="bold" text-anchor="middle" fill="url(#quantumGrad)" font-family="system-ui, sans-serif">Q</text>
       <!-- Circuit dots -->
       <circle cx="8" cy="20" r="1.5" fill="#fb923c" opacity="0.7"/>
       <circle cx="32" cy="20" r="1.5" fill="#f43f5e" opacity="0.7"/>
@@ -1832,8 +1831,8 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       </defs>
       <circle cx="20" cy="20" r="19" fill="url(#quantumGradL)" opacity="0.15"/>
       <circle cx="20" cy="20" r="19" fill="none" stroke="url(#quantumGradL)" stroke-width="1.5"/>
-      <path d="M20 8 L30 30 H26 L23.5 24 H16.5 L14 30 H10 Z" fill="url(#quantumGradL)" stroke="none"/>
-      <path d="M17.5 21 H22.5 L20 15 Z" fill="white" opacity="0.9"/>
+      <!-- Letter Q -->
+      <text x="20" y="30" font-size="32" font-weight="bold" text-anchor="middle" fill="url(#quantumGradL)" font-family="system-ui, sans-serif">Q</text>
       <circle cx="8" cy="20" r="1.5" fill="#fb923c" opacity="0.7"/>
       <circle cx="32" cy="20" r="1.5" fill="#f43f5e" opacity="0.7"/>
       <line x1="9.5" y1="20" x2="13" y2="20" stroke="#fb923c" stroke-width="1" opacity="0.5"/>
@@ -1885,8 +1884,8 @@ If the user uploads a document, analyze it thoroughly and answer questions based
         </div>`).join('');
       printDiv.innerHTML = `
         <div class="print-header">
-          <h2 style="color:#fb923c;font-size:22px;margin-bottom:4px;">ARIA — AI Research & Intelligence Assistant</h2>
-          <p style="color:#6b7280;font-size:12px;">Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL &nbsp;|&nbsp; Built by Mohanraj</p>
+          <h2 style="color:#fb923c;font-size:22px;margin-bottom:4px;">QUANTUM AI — Advanced Intelligence Platform</h2>
+          <p style="color:#6b7280;font-size:12px;">Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL &nbsp;|&nbsp; Built by Kiro AI</p>
           <p style="color:#9ca3af;font-size:11px;">Printed: ${new Date().toLocaleString('en-IN')}</p>
         </div>
         ${rows}`;
@@ -1942,7 +1941,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       requestNotificationPermission(() => {
         setTimeout(() => {
           const body = fileId ? `⏰ Reminder: Review file now — ${text}` : text;
-          const notif = new Notification('⏰ ARIA Reminder', { body, icon: '' });
+          const notif = new Notification('⏰ QUANTUM AI Reminder', { body, icon: '' });
           if (fileId) {
             notif.onclick = () => { loadFileFromMemory(fileId); window.focus(); };
           }
@@ -1992,7 +1991,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       state.showSummary = true;
       state.summaryContent = '⏳ Generating summary...';
       render();
-      const convo = state.messages.map(m => `${m.role === 'user' ? 'User' : 'ARIA'}: ${m.content}`).join('\n\n');
+      const convo = state.messages.map(m => `${m.role === 'user' ? 'User' : 'QUANTUM AI'}: ${m.content}`).join('\n\n');
       const summary = await generateResponse('', [
         { role: 'system', content: 'You are a helpful assistant. Summarize the following conversation concisely in bullet points, highlighting key topics, decisions, and action items.' },
         { role: 'user', content: `Please summarize this conversation:\n\n${convo}` }
@@ -2148,7 +2147,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                   </button>
                   <div>
-                    <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">ARIA</h1>
+                    <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100">QUANTUM AI</h1>
                     <p class="desktop-subtitle text-xs text-gray-400 dark:text-gray-500">
                       ${state.activeFileContext
                         ? `📄 <span class="text-orange-500 font-medium">${state.activeFileContext.name.length > 30 ? state.activeFileContext.name.slice(0,30)+'…' : state.activeFileContext.name}</span> active · <button onclick="state.activeFileContext=null;render();" class="text-red-400 hover:text-red-600">✕ clear</button>`
@@ -2209,7 +2208,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                           class="w-full text-left px-3 py-2 bg-white dark:bg-gray-800 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded border border-yellow-200 dark:border-yellow-800 text-xs"
                         >
                           <span class="font-semibold ${result.role === 'user' ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}">
-                            ${result.role === 'user' ? '👤 You' : '🤖 ARIA'}
+                            ${result.role === 'user' ? '👤 You' : '🤖 QUANTUM AI'}
                           </span>
                           <span class="text-gray-600 dark:text-gray-400 ml-2">${result.preview}</span>
                         </button>
@@ -2244,12 +2243,12 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                       ` : ''}
 
                       <div class="flex items-center justify-center gap-3 mb-3 welcome-logo">
-                        ${ariaLogoLargeSVG}
+                        ${quantumLogoLargeSVG}
                         <h1 class="text-3xl text-gray-800 dark:text-gray-100 welcome-title">
                           Hello, <span class="font-serif">Velmurugan Sir</span>
                         </h1>
                       </div>
-                      <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-8 welcome-sub">Your Personal AI Assistant — ARIA</p>
+                      <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-8 welcome-sub">Your Personal AI Assistant — QUANTUM AI</p>
 
                       <!-- NLCIL Quick Prompts -->
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto">
@@ -2282,7 +2281,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                       return `
                       <div id="msg-${msg.id}" class="flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-5">
                         ${msg.role === 'assistant' ? `
-                          <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${ariaLogoSVG}</div>
+                          <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${quantumLogoSVG}</div>
                         ` : ''}
                         <div class="max-w-[85vw] sm:max-w-2xl">
                           ${isEditing ? `
@@ -2395,7 +2394,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                     <!-- ✅ FEATURE 1: Enhanced Typing Indicator -->
                     ${state.isTyping ? `
                       <div class="flex gap-3 mb-5">
-                        <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${ariaLogoSVG}</div>
+                        <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center">${quantumLogoSVG}</div>
                         <div class="typing-indicator">
                           <span></span>
                           <span></span>
@@ -2421,7 +2420,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                       <div class="flex items-start justify-between gap-2">
                         <div class="flex-1 min-w-0">
                           <p class="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📄 ${state.fileSuggestion.fileName.length > 40 ? state.fileSuggestion.fileName.slice(0,40)+'…' : state.fileSuggestion.fileName} uploaded!</p>
-                          <p class="text-xs text-blue-600 dark:text-blue-400 mb-2">💡 ARIA suggests: What would you like to do?</p>
+                          <p class="text-xs text-blue-600 dark:text-blue-400 mb-2">💡 QUANTUM AI suggests: What would you like to do?</p>
                           <div class="flex flex-wrap gap-1">
                             ${state.fileSuggestion.suggestions.map(s => `
                               <button onclick="handleFileSuggestionAction('${s}')" class="px-2 py-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">${s}</button>
@@ -2449,7 +2448,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                   <!-- Text Input -->
                   <div class="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-orange-300 focus-within:bg-white dark:focus-within:bg-gray-900 transition-all">
                     <textarea id="messageInput" oninput="state.currentInput = this.value; handleSlashHint(this);" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendMessage();}"
-                      placeholder="Ask ARIA anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /letter /report /abt /do' : ''})"
+                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /letter /report /abt /do' : ''})"
                       class="w-full bg-transparent px-4 py-2.5 outline-none resize-none min-h-[42px] max-h-[150px] dark:text-gray-200 dark:placeholder-gray-500 ${getFontSizeClass()}" rows="1"></textarea>
                   </div>
 
@@ -2466,7 +2465,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                 </div>
 
                 <p class="text-center text-xs text-gray-300 dark:text-gray-700 mt-2">
-                  ARIA — Personal Assistant for <strong>Velmurugan Sir, DGM – CS Division, NLCIL</strong> &nbsp;|&nbsp; Built by <strong>Mohanraj</strong>, Cybersecurity Professional
+                  QUANTUM AI — Personal Assistant for <strong>Velmurugan Sir, DGM – CS Division, NLCIL</strong> &nbsp;|&nbsp; Built by <strong>Mohanraj</strong>, Cybersecurity Professional
                 </p>
               </div>
             </div>
@@ -2588,7 +2587,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
             <div class="modal-backdrop" onclick="if(event.target===this){state.showSettings=false;render();}">
               <div class="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
                 <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">⚙️ ARIA Settings</h2>
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">⚙️ QUANTUM AI Settings</h2>
                   <button onclick="state.showSettings=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
                 </div>
                 <div class="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
@@ -2727,7 +2726,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
 
       const interviewUrl = 'interview.html?k=' + encodeURIComponent(GROQ_API_KEY) + '&m=' + encodeURIComponent(GROQ_MODEL);
 
-      const popup = window.open(interviewUrl, 'ARIA_Interview',
+      const popup = window.open(interviewUrl, 'QUANTUM_AI_Interview',
         `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no,toolbar=no,menubar=no,location=no,status=no`
       );
 
