@@ -2246,27 +2246,10 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                       <div class="flex flex-col items-center justify-center gap-2 sm:gap-3 mb-6 sm:mb-8 welcome-logo">
                         ${quantumLogoLargeSVG}
                         <h1 class="text-2xl sm:text-3xl text-gray-800 dark:text-gray-100 welcome-title text-center">
-                          Hello, <span class="font-serif">Velmurugan Sir</span>
+                          QUANTUM AI
                         </h1>
                       </div>
-                      <p class="text-center text-xs sm:text-sm text-gray-400 dark:text-gray-500 mb-8 sm:mb-12 welcome-sub">Your Personal AI Assistant — QUANTUM AI</p>
-
-                      <!-- NLCIL Quick Prompts - Mobile Optimized 2x2 Grid -->
-                      <div class="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-3 max-w-xl mx-auto">
-                        ${[
-                          { icon: '📄', label: 'Draft Letter', prompt: 'Draft an official letter for ' },
-                          { icon: '📊', label: 'Meeting Summary', prompt: 'Create a meeting summary for ' },
-                          { icon: '📋', label: 'Tech Report', prompt: 'Generate a technical report on ' },
-                          { icon: '⚡', label: 'ABT Report', prompt: 'Generate an ABT (Availability Based Tariff) report summary for NLCIL Thermal Power Station. Include key metrics and observations.' }
-                        ].map((q, i) => `
-                          <button onclick="document.getElementById('messageInput').value = \`${q.prompt}\`; document.getElementById('messageInput').focus();"
-                            class="quick-prompt-card flex flex-col items-center justify-center gap-2 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/10 transition-all text-center min-h-[80px] sm:min-h-[90px]"
-                            style="animation-delay:${0.4 + i * 0.08}s">
-                            <span class="text-2xl sm:text-3xl">${q.icon}</span>
-                            <span class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 font-medium leading-tight">${q.label}</span>
-                          </button>
-                        `).join('')}
-                      </div>
+                      <p class="text-center text-xs sm:text-sm text-gray-400 dark:text-gray-500 mb-8 sm:mb-12 welcome-sub">Your Personal AI Assistant — Advanced Intelligence Platform</p>
                     </div>
                   </div>
                 ` : `
