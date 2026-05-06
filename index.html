@@ -826,7 +826,20 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       state.isStreaming = false;
       input.value = '';
       state.currentInput = '';
+      
+      // Close keyboard on mobile
+      input.blur();
+      
       render();
+      
+      // Scroll to bottom after render
+      setTimeout(() => {
+        const area = document.getElementById('messagesArea');
+        if (area) {
+          area.scrollTop = area.scrollHeight;
+          area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+        }
+      }, 100);
 
       // Streaming AI response
       const aiMsgId = Date.now() + 1;
@@ -835,6 +848,15 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       state.isTyping = false;
       state.isStreaming = true;
       render();
+      
+      // Scroll to bottom again after AI message added
+      setTimeout(() => {
+        const area = document.getElementById('messagesArea');
+        if (area) {
+          area.scrollTop = area.scrollHeight;
+          area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+        }
+      }, 150);
 
       await generateResponseStreaming(
         processedContent,
@@ -847,7 +869,9 @@ If the user uploads a document, analyze it thoroughly and answer questions based
             streamEl.innerHTML = formatMarkdown(partial);
           }
           const area = document.getElementById('messagesArea');
-          if (area) area.scrollTop = area.scrollHeight;
+          if (area) {
+            area.scrollTop = area.scrollHeight;
+          }
         },
         (full) => {
           const idx = state.messages.findIndex(m => m.id === aiMsgId);
@@ -864,6 +888,10 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               state.messages[msgIdx].webSearchUsed = true;
             }
             render();
+            setTimeout(() => {
+              const area = document.getElementById('messagesArea');
+              if (area) area.scrollTop = area.scrollHeight;
+            }, 100);
             searchWeb(searchQuery).then(webResult => {
               const mIdx = state.messages.findIndex(m => m.id === aiMsgId);
               if (mIdx !== -1) {
@@ -878,13 +906,21 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               saveCurrentChat();
               playChime();
               render();
-              setTimeout(() => mermaid.run(), 100);
+              setTimeout(() => {
+                mermaid.run();
+                const area = document.getElementById('messagesArea');
+                if (area) area.scrollTop = area.scrollHeight;
+              }, 100);
             });
           } else {
             saveCurrentChat();
             playChime();
             render();
-            setTimeout(() => { mermaid.run(); }, 100);
+            setTimeout(() => { 
+              mermaid.run();
+              const area = document.getElementById('messagesArea');
+              if (area) area.scrollTop = area.scrollHeight;
+            }, 100);
           }
         },
         (errMsg) => {
@@ -892,6 +928,10 @@ If the user uploads a document, analyze it thoroughly and answer questions based
           if (idx !== -1) { state.messages[idx].content = errMsg; }
           state.isStreaming = false;
           render();
+          setTimeout(() => {
+            const area = document.getElementById('messagesArea');
+            if (area) area.scrollTop = area.scrollHeight;
+          }, 100);
         }
       );
     }
@@ -1692,11 +1732,14 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       const area = document.getElementById('messagesArea');
       if (area) setTimeout(() => area.scrollTop = area.scrollHeight, 50);
 
-      // Keep focus on input
-      setTimeout(() => {
-        const inp = document.getElementById('messageInput');
-        if (inp) inp.focus();
-      }, 60);
+      // Don't auto-focus on mobile to prevent keyboard from staying open
+      // Only focus on desktop
+      if (window.innerWidth > 640) {
+        setTimeout(() => {
+          const inp = document.getElementById('messageInput');
+          if (inp) inp.focus();
+        }, 60);
+      }
     }
 
     // ── Slash Command Hint ────────────────────────────────────
