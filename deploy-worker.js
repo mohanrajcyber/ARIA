@@ -2,31 +2,27 @@
  * QUANTUM AI — Cloudflare Worker Auto-Deploy Script
  *
  * Usage:
- *   1. Create a .env file (see .env.example)
+ *   1. Fill in .env file (CF_API_TOKEN, CF_ACCOUNT_ID, GROQ_KEY_1..20)
  *   2. Run: node deploy-worker.js
  *   3. Copy the Worker URL printed at the end
  *   4. Paste in QUANTUM AI Settings → API Proxy → Save → Reload
- *
- * .env file format:
- *   CF_API_TOKEN=your_cloudflare_api_token
- *   CF_ACCOUNT_ID=your_cloudflare_account_id
- *   GROQ_KEY_1=gsk_...
- *   GROQ_KEY_2=gsk_...
- *   ... up to GROQ_KEY_15
  */
 
-const fs = require('fs');
-const path = require('path');
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Load .env file ────────────────────────────────────────────────────────────
 function loadEnv() {
-  const envPath = path.join(__dirname, '.env');
-  if (!fs.existsSync(envPath)) {
+  const envPath = join(__dirname, '.env');
+  if (!existsSync(envPath)) {
     console.error('❌ .env file not found!');
     console.error('   Create a .env file based on .env.example');
     process.exit(1);
   }
-  const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+  const lines = readFileSync(envPath, 'utf8').split('\n');
   const env = {};
   for (const line of lines) {
     const trimmed = line.trim();
@@ -120,14 +116,39 @@ async function deploy() {
 
   // ── Step 1: Deploy Worker Script ────────────────────────────
   console.log(`\n📦 Step 1: Deploying Worker "${WORKER_NAME}"...`);
+
+  // Build multipart/form-data manually for Node.js compatibility
+  const boundary = '----FormBoundary' + Date.now().toString(16);
+  const metaJson = JSON.stringify({ main_module: 'worker.js', compatibility_date: '2024-01-01' });
+  const body = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="metadata"; filename="metadata.json"',
+    'Content-Type: application/json',
+    '',
+    metaJson,
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="worker.js"; filename="worker.js"',
+    'Content-Type: application/javascript+module',
+    '',
+    WORKER_SCRIPT,
+    `--${boundary}--`,
+    ''
+  ].join('\r\n');
+
   const deployRes = await fetch(`${BASE}/workers/scripts/${WORKER_NAME}`, {
     method: 'PUT',
-    headers: { 'Authorization': `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/javascript' },
-    body: WORKER_SCRIPT
+    headers: {
+      'Authorization': `Bearer ${CF_API_TOKEN}`,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`
+    },
+    body
   });
   const deployData = await deployRes.json();
   if (!deployData.success) {
     console.error('❌ Worker deploy failed:', JSON.stringify(deployData.errors, null, 2));
+    console.error('\n💡 Fix: Your Cloudflare API token needs "Workers Scripts:Edit" permission.');
+    console.error('   Go to: dash.cloudflare.com → My Profile → API Tokens');
+    console.error('   Create a new token with "Workers Scripts:Edit" permission.');
     process.exit(1);
   }
   console.log('✅ Worker script deployed!');
