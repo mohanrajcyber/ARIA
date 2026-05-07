@@ -14,6 +14,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -280,6 +281,78 @@
       }
     };
 
+    // ── IndexedDB Setup (replaces localStorage for chats) ─────
+    let db = null;
+    const DB_NAME = 'QuantumAI_DB';
+    const DB_VERSION = 1;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const database = e.target.result;
+          if (!database.objectStoreNames.contains('chats')) {
+            const store = database.createObjectStore('chats', { keyPath: 'id' });
+            store.createIndex('date', 'date', { unique: false });
+          }
+          if (!database.objectStoreNames.contains('fileMemory')) {
+            database.createObjectStore('fileMemory', { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+        req.onerror = () => {
+          console.warn('IndexedDB failed, falling back to localStorage');
+          resolve(null);
+        };
+      });
+    }
+
+    function dbSaveChat(chat) {
+      if (!db) {
+        // fallback to localStorage
+        const chats = JSON.parse(localStorage.getItem('aria_chats') || '[]');
+        const idx = chats.findIndex(c => c.id === chat.id);
+        if (idx !== -1) chats[idx] = chat; else chats.unshift(chat);
+        localStorage.setItem('aria_chats', JSON.stringify(chats));
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        const tx = db.transaction('chats', 'readwrite');
+        tx.objectStore('chats').put(chat);
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+      });
+    }
+
+    function dbDeleteChat(id) {
+      if (!db) {
+        const chats = JSON.parse(localStorage.getItem('aria_chats') || '[]');
+        localStorage.setItem('aria_chats', JSON.stringify(chats.filter(c => c.id !== id)));
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        const tx = db.transaction('chats', 'readwrite');
+        tx.objectStore('chats').delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+      });
+    }
+
+    function dbLoadAllChats() {
+      if (!db) {
+        return Promise.resolve(JSON.parse(localStorage.getItem('aria_chats') || '[]'));
+      }
+      return new Promise((resolve) => {
+        const tx = db.transaction('chats', 'readonly');
+        const req = tx.objectStore('chats').getAll();
+        req.onsuccess = () => {
+          const chats = (req.result || []).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          resolve(chats);
+        };
+        req.onerror = () => resolve([]);
+      });
+    }
+
     // State Management
     const state = {
       darkMode: localStorage.getItem('aria_dark') === 'true',
@@ -438,13 +511,15 @@
 
     function formatMarkdown(text) {
       const html = marked.parse(text);
-      return html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (match, lang, code) => {
+      const processed = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (match, lang, code) => {
         if (lang === 'mermaid') {
           return `<div class="mermaid bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 my-4">${code}</div>`;
         }
         const highlighted = hljs.highlight(code, { language: lang || 'plaintext' }).value;
         return `<div class="relative group"><button onclick="copyCode(this)" class="absolute right-2 top-2 opacity-0 group-hover:opacity-100 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white flex items-center gap-1">${icons.copy} Copy</button><pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-3"><code class="language-${lang}">${highlighted}</code></pre></div>`;
       });
+      // ✅ XSS Protection via DOMPurify
+      return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(processed, { ADD_TAGS: ['div','pre','code','button'], ADD_ATTR: ['onclick','class','style'] }) : processed;
     }
 
     function copyCode(btn) {
@@ -469,6 +544,11 @@
         '/advisory': 'Draft a cybersecurity advisory notice for NLCIL regarding:\n\n',
         '/abt': 'Generate an ABT (Availability Based Tariff) report summary for NLCIL Thermal Power Station:\n\n',
         '/do': 'Draft a Demi-Official (DO) letter from Velmurugan, DGM CS Division, NLCIL to:\n\n',
+        '/rti': 'Draft an official RTI (Right to Information) response for NLCIL CS Division for the query:\n\n',
+        '/mom': 'Structure these raw meeting notes into a formal MOM (Minutes of Meeting) for NLCIL:\n\n',
+        '/coal': 'Generate a coal dispatch and production report summary for NLCIL:\n\n',
+        '/audit': 'Generate an energy audit checklist for NLCIL department/area:\n\n',
+        '/grievance': 'Draft an official response to this employee grievance for NLCIL HR:\n\n',
       };
       for (const [cmd, prompt] of Object.entries(commands)) {
         if (content.startsWith(cmd)) return prompt + content.slice(cmd.length).trim();
@@ -526,7 +606,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
     }
 
     // Streaming response (ChatGPT style)
-    async function generateResponseStreaming(userMessage, onChunk, onDone, onError) {
+    async function generateResponseStreaming(userMessage, onChunk, onDone, onError, customMessages = null) {
       let attempts = 0;
       const maxAttempts = GROQ_KEYS.length;
 
@@ -540,7 +620,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
             },
             body: JSON.stringify({
               model: GROQ_MODEL,
-              messages: buildSystemMessages(userMessage),
+              messages: customMessages || buildSystemMessages(userMessage),
               temperature: 0.7,
               max_tokens: state.activeFileContext ? 4096 : 2048,
               stream: true
@@ -674,12 +754,20 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       const title = state.messages[0].content.slice(0, 40) + (state.messages[0].content.length > 40 ? '…' : '');
       if (state.currentChatId) {
         const idx = state.chats.findIndex(c => c.id === state.currentChatId);
-        if (idx !== -1) { state.chats[idx].messages = [...state.messages]; state.chats[idx].title = title; }
+        if (idx !== -1) {
+          state.chats[idx].messages = [...state.messages];
+          state.chats[idx].title = title;
+          state.chats[idx].updatedAt = Date.now();
+          dbSaveChat(state.chats[idx]);
+        }
       } else {
         state.currentChatId = Date.now().toString();
-        state.chats.unshift({ id: state.currentChatId, title, messages: [...state.messages], date: new Date().toLocaleDateString() });
+        const newChat = { id: state.currentChatId, title, messages: [...state.messages], date: new Date().toLocaleDateString(), updatedAt: Date.now() };
+        state.chats.unshift(newChat);
+        dbSaveChat(newChat);
       }
-      localStorage.setItem('aria_chats', JSON.stringify(state.chats));
+      // Keep localStorage as backup
+      try { localStorage.setItem('aria_chats', JSON.stringify(state.chats.map(c => ({...c, messages: c.messages.slice(-20)})))); } catch(e) {}
     }
 
     function loadChat(id) {
@@ -690,7 +778,8 @@ If the user uploads a document, analyze it thoroughly and answer questions based
     function deleteChat(id) {
       state.chats = state.chats.filter(c => c.id !== id);
       if (state.currentChatId === id) { state.messages = []; state.currentChatId = null; }
-      localStorage.setItem('aria_chats', JSON.stringify(state.chats));
+      dbDeleteChat(id);
+      try { localStorage.setItem('aria_chats', JSON.stringify(state.chats)); } catch(e) {}
       render();
     }
 
@@ -2001,6 +2090,90 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       render();
     }
 
+    // ── 🆕 Meeting Minutes Structurer (NLCIL) ─────────────────
+    async function structureMeetingMinutes() {
+      const raw = prompt('📋 Paste your raw meeting notes here:\n(Can be rough notes, bullet points, or transcript)');
+      if (!raw || !raw.trim()) return;
+
+      const aiMsgId = Date.now() + 1;
+      state.messages.push({ id: Date.now(), role: 'user', content: '📋 Structure these meeting minutes:\n\n' + raw.slice(0, 200) + (raw.length > 200 ? '...' : ''), timestamp: Date.now() });
+      state.messages.push({ id: aiMsgId, role: 'assistant', content: '', timestamp: Date.now() });
+      state.isTyping = false;
+      state.isStreaming = true;
+      render();
+
+      await generateResponseStreaming(
+        raw,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + aiMsgId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = err;
+          state.isStreaming = false;
+          render();
+        },
+        [{ role: 'system', content: `You are an expert meeting minutes formatter for NLCIL (NLC India Limited). 
+Format the provided raw notes into a professional structured MOM (Minutes of Meeting) with:
+
+## 📋 MINUTES OF MEETING
+
+**Date:** [extract or use today's date]
+**Venue:** [extract if mentioned]
+**Chaired by:** [extract if mentioned]
+
+### Attendees:
+[list if mentioned]
+
+### Agenda Items Discussed:
+[numbered list of topics]
+
+### Key Decisions:
+[bullet points of decisions made]
+
+### Action Items:
+| # | Action | Responsible | Deadline |
+|---|--------|-------------|----------|
+[table of action items]
+
+### Next Meeting:
+[if mentioned]
+
+Use formal NLCIL language. Be precise and professional.` }]
+      );
+    }
+
+    // ── 🆕 RTI Response Drafter ───────────────────────────────
+    async function draftRTIResponse() {
+      const query = prompt('📝 Enter the RTI query to respond to:');
+      if (!query || !query.trim()) return;
+      const input = document.getElementById('messageInput');
+      if (input) {
+        input.value = `/rti Draft an official RTI (Right to Information) response for NLCIL CS Division for the following query: ${query}`;
+        input.focus();
+      }
+    }
+
+    // ── 🆕 Smooth Scroll to Bottom ────────────────────────────
+    function smoothScrollToBottom() {
+      const area = document.getElementById('messagesArea');
+      if (area) {
+        area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+      }
+    }
+
     // Main Render Function
     function render() {
       const pins = getPins();
@@ -2163,6 +2336,9 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                   </button>
                   <button onclick="summarizeConversation()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Summarize Conversation">
                     <span class="text-base">📊</span>
+                  </button>
+                  <button onclick="structureMeetingMinutes()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Meeting Minutes Structurer">
+                    <span class="text-base">📋</span>
                   </button>
                   <button onclick="printChat()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Print / PDF Export">
                     <span class="text-base">🖨️</span>
@@ -2430,7 +2606,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                   <!-- Text Input -->
                   <div class="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-orange-300 focus-within:bg-white dark:focus-within:bg-gray-900 transition-all">
                     <textarea id="messageInput" oninput="state.currentInput = this.value; handleSlashHint(this);" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendMessage();}"
-                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /letter /report /abt /do' : ''})"
+                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /letter /report /mom /rti /abt /do' : ''})"
                       class="w-full bg-transparent px-3 sm:px-4 py-2 outline-none resize-none min-h-[38px] max-h-[120px] dark:text-gray-200 dark:placeholder-gray-500 text-sm sm:text-base ${getFontSizeClass()}" rows="1"></textarea>
                   </div>
 
@@ -2623,7 +2799,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                     ${[
                       ['notificationSound', '🔔 Notification Sound', 'Play chime when ARIA responds'],
                       ['wordCount', '📊 Word Count & Reading Time', 'Show word count below each response'],
-                      ['slashCommands', '⌨️ Slash Commands', '/letter /report /abt /do /translate'],
+                      ['slashCommands', '⌨️ Slash Commands', '/letter /report /mom /rti /abt /do /coal /audit'],
                       ['hideWelcomeOnMobile', '📱 Hide Welcome on Mobile', 'Show chat directly on mobile devices']
                     ].map(([key, title, desc]) => `
                       <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
@@ -2668,7 +2844,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
                     <div class="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3">
                       <p class="text-xs font-semibold text-orange-700 dark:text-orange-300 mb-2">⌨️ Available Slash Commands:</p>
                       <div class="grid grid-cols-2 gap-1">
-                        ${['/letter','/report','/minutes','/advisory','/abt','/do','/translate','/summarize','/explain','/debug'].map(cmd => `
+                        ${['/letter','/report','/minutes','/advisory','/abt','/do','/translate','/summarize','/explain','/debug','/rti','/mom','/coal','/audit','/grievance','/improve'].map(cmd => `
                           <code class="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded border border-orange-200 dark:border-orange-700 text-orange-600 dark:text-orange-400">${cmd}</code>
                         `).join('')}
                       </div>
@@ -2721,8 +2897,17 @@ If the user uploads a document, analyze it thoroughly and answer questions based
       }
     }
 
-    // Initial render
-    render();
+    // Initial render — init IndexedDB first, then load chats
+    initDB().then(async () => {
+      // Load chats from IndexedDB (with localStorage fallback)
+      const dbChats = await dbLoadAllChats();
+      if (dbChats.length > 0) {
+        state.chats = dbChats;
+      }
+      render();
+    }).catch(() => {
+      render();
+    });
 
     // Auto-dismiss daily briefing after 8 seconds
     setTimeout(() => {
