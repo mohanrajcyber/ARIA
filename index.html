@@ -304,6 +304,10 @@
           if (!database.objectStoreNames.contains('fileMemory')) {
             database.createObjectStore('fileMemory', { keyPath: 'id' });
           }
+          if (!database.objectStoreNames.contains('memories')) {
+            const memStore = database.createObjectStore('memories', { keyPath: 'id' });
+            memStore.createIndex('timestamp', 'timestamp', { unique: false });
+          }
         };
         req.onsuccess = (e) => { db = e.target.result; resolve(db); };
         req.onerror = () => {
@@ -414,6 +418,9 @@
       showDebateModal: false,
       debateTopic: '',
       debatePhase: null, // 'agree' | 'disagree' | 'summary'
+      // 🆕 Command Palette
+      showCommandPalette: false,
+      commandQuery: '',
       // Settings / Preferences
       settings: JSON.parse(localStorage.getItem('aria_settings') || JSON.stringify({
         language: 'english',
@@ -568,6 +575,16 @@
         '/coal': 'Generate a coal dispatch and production report summary for NLCIL:\n\n',
         '/audit': 'Generate an energy audit checklist for NLCIL department/area:\n\n',
         '/grievance': 'Draft an official response to this employee grievance for NLCIL HR:\n\n',
+        '/roast': '🔥 Give brutally honest feedback on this work. Structure as: THE ROAST (criticisms) → WHAT WORKS (strengths) → HOW TO FIX IT (improvements) → SCORE X/10:\n\n',
+        '/debate': '⚔️ Debate this topic — first argue strongly FOR it, then strongly AGAINST it, then give a neutral balanced verdict:\n\n',
+        '/fix': 'You are a prompt engineering expert. Rewrite this as a clearer, more effective AI prompt. Return ONLY the improved prompt:\n\n',
+        '/explain5': 'Explain this like I am 5 years old. Use very simple words and fun analogies:\n\n',
+        '/explainexpert': 'Explain this at an expert level with technical depth, nuances and edge cases:\n\n',
+        '/executive': '👔 Give an executive summary in this format: 3 Key Points | 2 Risks | 1 Recommendation. Be concise:\n\n',
+        '/devil': '😈 Play devil\'s advocate. Give the strongest possible counter-arguments against this idea/decision:\n\n',
+        '/thought': '💭 I will share my stream of consciousness thoughts. Help me organize them, identify what I really want, and clarify my thinking:\n\n',
+        '/error': '🐛 Explain this error: what caused it, what concept I\'m missing, how to fix it, and give a mini-lesson:\n\n',
+        '/wrong': '⚠️ Attack this from multiple perspectives (auditor, critic, devil\'s advocate). Find all weaknesses, flaws and risks:\n\n',
       };
       for (const [cmd, prompt] of Object.entries(commands)) {
         if (content.startsWith(cmd)) return prompt + content.slice(cmd.length).trim();
@@ -606,18 +623,19 @@
       GROQ_API_KEY = GROQ_KEYS[currentKeyIndex];
     }
 
-    function buildSystemMessages(userMessage) {
+    async function buildSystemMessages(userMessage) {
       const fileCtx = state.activeFileContext;
       const fileSection = fileCtx
         ? `\n\nACTIVE DOCUMENT CONTEXT:\nFile: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages)` : ''}${fileCtx.wordCount ? `, ~${fileCtx.wordCount} words` : ''}\n\nFULL DOCUMENT CONTENT:\n\`\`\`\n${fileCtx.content}\n\`\`\`\n\nIMPORTANT: Answer ALL questions using this document content. Quote specific sections when relevant. If the answer is in the document, provide it directly.`
         : '';
+      const memoryContext = await getMemoryContext();
       return [
         {
           role: 'system',
           content: `You are QUANTUM AI (Advanced Intelligence Platform), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
 Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
 Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
-If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}`
+If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}${memoryContext}`
         },
         ...state.messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
@@ -639,7 +657,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
             },
             body: JSON.stringify({
               model: GROQ_MODEL,
-              messages: customMessages || buildSystemMessages(userMessage),
+              messages: customMessages || await buildSystemMessages(userMessage),
               temperature: 0.7,
               max_tokens: state.activeFileContext ? 4096 : 2048,
               stream: true
@@ -1227,6 +1245,10 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               const area = document.getElementById('messagesArea');
               if (area) area.scrollTop = area.scrollHeight;
             }, 100);
+            // 🧠 Extract memories in background (every 3 messages)
+            if (state.messages.length % 3 === 0) {
+              setTimeout(() => extractAndSaveMemories(state.messages), 2000);
+            }
           }
         },
         (errMsg) => {
@@ -2185,13 +2207,121 @@ Use formal NLCIL language. Be precise and professional.` }]
       }
     }
 
-    // ── 🆕 Smooth Scroll to Bottom ────────────────────────────
-    function smoothScrollToBottom() {
-      const area = document.getElementById('messagesArea');
-      if (area) {
-        area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    // ── 🆕 AI Memory Engine ───────────────────────────────────
+    async function extractAndSaveMemories(conversation) {
+      if (conversation.length < 2) return;
+      try {
+        const convoText = conversation.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.slice(0, 300)}`).join('\n');
+        const result = await generateResponse('', [
+          { role: 'system', content: 'Extract key facts, preferences, and important information about the user from this conversation. Return a JSON array of memory objects with format: [{"fact": "...", "category": "preference|project|personal|technical", "importance": 1-5}]. Return ONLY valid JSON array, nothing else. Max 3 items. If nothing important, return [].' },
+          { role: 'user', content: convoText }
+        ]);
+        let memories = [];
+        try {
+          const match = result.match(/\[[\s\S]*\]/);
+          if (match) memories = JSON.parse(match[0]);
+        } catch(e) { return; }
+        if (!Array.isArray(memories) || memories.length === 0) return;
+        for (const mem of memories) {
+          if (!mem.fact || mem.fact.length < 5) continue;
+          const memObj = { id: Date.now().toString() + Math.random(), fact: mem.fact, category: mem.category || 'general', importance: mem.importance || 3, timestamp: Date.now(), chatId: state.currentChatId };
+          if (db) {
+            const tx = db.transaction('memories', 'readwrite');
+            tx.objectStore('memories').put(memObj);
+          } else {
+            const mems = JSON.parse(localStorage.getItem('aria_memories') || '[]');
+            mems.unshift(memObj);
+            localStorage.setItem('aria_memories', JSON.stringify(mems.slice(0, 50)));
+          }
+        }
+      } catch(e) {}
+    }
+
+    async function getMemories() {
+      if (db) {
+        return new Promise((resolve) => {
+          const tx = db.transaction('memories', 'readonly');
+          const req = tx.objectStore('memories').getAll();
+          req.onsuccess = () => resolve((req.result || []).sort((a,b) => (b.importance||0)-(a.importance||0)).slice(0, 20));
+          req.onerror = () => resolve([]);
+        });
+      }
+      return JSON.parse(localStorage.getItem('aria_memories') || '[]').slice(0, 20);
+    }
+
+    async function getMemoryContext() {
+      const memories = await getMemories();
+      if (memories.length === 0) return '';
+      return '\n\n🧠 **User Memory Context** (facts learned from previous conversations):\n' + memories.map(m => `- ${m.fact}`).join('\n');
+    }
+
+    async function showMemories() {
+      const memories = await getMemories();
+      if (memories.length === 0) { alert('No memories yet. Have more conversations and I\'ll start remembering things about you!'); return; }
+      const text = memories.map((m, i) => `${i+1}. [${m.category}] ${m.fact}`).join('\n');
+      alert('🧠 What I remember about you:\n\n' + text);
+    }
+
+    async function clearMemories() {
+      if (!confirm('Clear all memories? I will forget everything I learned about you.')) return;
+      if (db) {
+        const tx = db.transaction('memories', 'readwrite');
+        tx.objectStore('memories').clear();
+      }
+      localStorage.removeItem('aria_memories');
+      alert('✅ Memories cleared.');
+    }
+
+    // ── 🆕 Ctrl+K Command Palette ────────────────────────────
+    function openCommandPalette() {
+      state.showCommandPalette = true;
+      state.commandQuery = '';
+      render();
+      setTimeout(() => {
+        const inp = document.getElementById('commandPaletteInput');
+        if (inp) inp.focus();
+      }, 50);
+    }
+    function closeCommandPalette() {
+      state.showCommandPalette = false;
+      render();
+    }
+    function runCommand(cmd) {
+      state.showCommandPalette = false;
+      const input = document.getElementById('messageInput');
+      switch(cmd) {
+        case 'new-chat': newChat(); break;
+        case 'dark-mode': toggleDarkMode(); break;
+        case 'settings': state.showSettings = true; render(); break;
+        case 'memories': showMemories(); render(); break;
+        case 'clear-memories': clearMemories(); render(); break;
+        case 'debate': if(input){input.value='/debate ';input.focus();} render(); break;
+        case 'roast': if(input){input.value='/roast ';input.focus();} render(); break;
+        case 'fix': if(input){input.value='/fix ';input.focus();} render(); break;
+        case 'executive': if(input){input.value='/executive ';input.focus();} render(); break;
+        case 'devil': if(input){input.value='/devil ';input.focus();} render(); break;
+        case 'thought': if(input){input.value='/thought ';input.focus();} render(); break;
+        case 'error': if(input){input.value='/error ';input.focus();} render(); break;
+        case 'wrong': if(input){input.value='/wrong ';input.focus();} render(); break;
+        case 'letter': if(input){input.value='/letter ';input.focus();} render(); break;
+        case 'report': if(input){input.value='/report ';input.focus();} render(); break;
+        case 'mom': if(input){input.value='/mom ';input.focus();} render(); break;
+        case 'abt': if(input){input.value='/abt ';input.focus();} render(); break;
+        case 'summarize': summarizeConversation(); break;
+        case 'meeting-minutes': structureMeetingMinutes(); break;
+        default: render();
       }
     }
+
+    // Keyboard shortcut for Ctrl+K
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        if (state.showCommandPalette) closeCommandPalette();
+        else openCommandPalette();
+      }
+      if (e.key === 'Escape' && state.showCommandPalette) closeCommandPalette();
+    });
 
     // ── 🆕 FEATURE: "Explain to Anyone" Slider ───────────────
     const explainLevels = {
@@ -2656,25 +2786,9 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
               <!-- Sidebar Footer -->
               <div class="p-2 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
-                  <button onclick="createFolder()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-sm text-orange-600 dark:text-orange-400 mb-1">
-                    <span>📁</span><span>New Folder</span>
-                  </button>
-                  <button onclick="state.showPromptLibrary = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors text-sm text-purple-600 dark:text-purple-400 mb-1">
-                    <span>📚</span><span>Prompt Library</span>
-                  </button>
-                  <button onclick="state.showNotes = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors text-sm text-yellow-600 dark:text-yellow-400 mb-1">
-                    <span>📝</span><span>Notes</span>
-                  </button>
-                  <button onclick="state.showReminderModal = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-sm text-blue-600 dark:text-blue-400 mb-1">
-                    <span>⏰</span><span>Reminders</span>
-                  </button>
                   <button onclick="state.showSettings = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm text-gray-600 dark:text-gray-400 mb-1">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     <span>Settings</span>
-                  </button>
-                  <button onclick="launchInterviewMode()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-sm text-green-600 dark:text-green-400 mb-1 border border-green-200 dark:border-green-800">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    <span>Interview Mode</span>
                   </button>
                   <button onclick="toggleDarkMode()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm text-gray-600 dark:text-gray-400">
                     ${state.darkMode ? icons.sun : icons.moon}
@@ -2682,11 +2796,6 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
                   </button>
                 ` : `
                   <div class="flex flex-col items-center gap-1">
-                    <button onclick="state.showNotes = true; render();" class="w-8 h-8 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 flex items-center justify-center transition-colors text-yellow-600 dark:text-yellow-400 mx-auto text-base" title="Notes">📝</button>
-                    <button onclick="state.showReminderModal = true; render();" class="w-8 h-8 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 flex items-center justify-center transition-colors text-blue-600 dark:text-blue-400 mx-auto text-base" title="Reminders">⏰</button>
-                    <button onclick="launchInterviewMode()" class="w-8 h-8 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 flex items-center justify-center transition-colors text-green-600 dark:text-green-400 mx-auto" title="Interview Mode">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    </button>
                     <button onclick="state.showSettings = true; render();" class="w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center transition-colors text-gray-600 dark:text-gray-400 mx-auto" title="Settings">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
@@ -3001,21 +3110,7 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
                   ` : ''}
                 ` : ''}
 
-                <!-- 🆕 Extra Action Buttons Row -->
-                <div class="flex items-center gap-1 mb-1 flex-wrap">
-                  <button id="fixPromptBtn" onclick="fixMyPrompt()" class="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg text-xs transition-colors border border-blue-200 dark:border-blue-800" title="Fix & improve your prompt">
-                    🔧 Fix Prompt
-                  </button>
-                  <button onclick="roastMyWork()" class="flex items-center gap-1 px-2 py-1 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-lg text-xs transition-colors border border-red-200 dark:border-red-800" title="Get brutal honest feedback">
-                    🔥 Roast It
-                  </button>
-                  <button onclick="state.showDebateModal=true;render();" class="flex items-center gap-1 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-lg text-xs transition-colors border border-purple-200 dark:border-purple-800" title="Start AI debate">
-                    ⚔️ Debate
-                  </button>
-                  <button onclick="saveCurrentAsPrompt()" class="flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-600 dark:text-green-400 rounded-lg text-xs transition-colors border border-green-200 dark:border-green-800" title="Save to prompt library">
-                    📚 Save
-                  </button>
-                </div>
+                <!-- 🆕 Extra Action Buttons Row - REMOVED for clean UI -->
 
                 <div class="flex items-end gap-1 sm:gap-2">
                   <!-- File Upload -->
@@ -3032,7 +3127,7 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
                   <!-- Text Input -->
                   <div class="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-orange-300 focus-within:bg-white dark:focus-within:bg-gray-900 transition-all">
                     <textarea id="messageInput" oninput="state.currentInput = this.value; handleSlashHint(this);" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendMessage();}"
-                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /letter /report /mom /rti /abt /do' : ''})"
+                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /debate /roast /fix /executive /devil /thought /error /wrong' : ''})"
                       class="w-full bg-transparent px-3 sm:px-4 py-2 outline-none resize-none min-h-[38px] max-h-[120px] dark:text-gray-200 dark:placeholder-gray-500 text-sm sm:text-base ${getFontSizeClass()}" rows="1"></textarea>
                   </div>
 
@@ -3354,6 +3449,70 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
                       <button onclick="document.getElementById('debateTopicInput').value='${t}'" class="px-2 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded text-xs border border-purple-200 dark:border-purple-800 hover:bg-purple-100">${t}</button>
                     `).join('')}
                   </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 🆕 Command Palette (Ctrl+K) -->
+          ${state.showCommandPalette ? `
+            <div class="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-20 px-4" onclick="if(event.target===this)closeCommandPalette();">
+              <div class="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-400"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <input id="commandPaletteInput" type="text" placeholder="Type a command or search..." 
+                    oninput="state.commandQuery=this.value;render();"
+                    onkeydown="if(event.key==='Escape')closeCommandPalette();"
+                    class="flex-1 bg-transparent outline-none text-gray-800 dark:text-gray-200 text-sm placeholder-gray-400">
+                  <kbd class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">ESC</kbd>
+                </div>
+                <div class="max-h-80 overflow-y-auto p-2">
+                  ${(() => {
+                    const q = (state.commandQuery || '').toLowerCase();
+                    const cmds = [
+                      { id: 'new-chat', icon: '✨', label: 'New Chat', desc: 'Start a fresh conversation', group: 'Chat' },
+                      { id: 'dark-mode', icon: state.darkMode ? '☀️' : '🌙', label: state.darkMode ? 'Light Mode' : 'Dark Mode', desc: 'Toggle theme', group: 'Chat' },
+                      { id: 'settings', icon: '⚙️', label: 'Settings', desc: 'Open settings panel', group: 'Chat' },
+                      { id: 'memories', icon: '🧠', label: 'View My Memories', desc: 'See what AI remembers about you', group: 'Memory' },
+                      { id: 'clear-memories', icon: '🗑️', label: 'Clear Memories', desc: 'Forget everything AI learned', group: 'Memory' },
+                      { id: 'summarize', icon: '📊', label: 'Summarize Conversation', desc: 'Get a summary of this chat', group: 'Tools' },
+                      { id: 'meeting-minutes', icon: '📋', label: 'Meeting Minutes', desc: 'Structure raw notes into MOM', group: 'Tools' },
+                      { id: 'debate', icon: '⚔️', label: 'Start Debate', desc: '/debate — AI argues both sides', group: 'Features' },
+                      { id: 'roast', icon: '🔥', label: 'Roast My Work', desc: '/roast — Brutal honest feedback', group: 'Features' },
+                      { id: 'fix', icon: '🔧', label: 'Fix My Prompt', desc: '/fix — Improve your prompt', group: 'Features' },
+                      { id: 'executive', icon: '👔', label: 'Executive Summary', desc: '/executive — 3 points, 2 risks, 1 rec', group: 'Features' },
+                      { id: 'devil', icon: '😈', label: "Devil's Advocate", desc: '/devil — Counter-arguments', group: 'Features' },
+                      { id: 'thought', icon: '💭', label: 'Thought Companion', desc: '/thought — Organize your thinking', group: 'Features' },
+                      { id: 'error', icon: '🐛', label: 'Explain My Error', desc: '/error — Debug + mini lesson', group: 'Features' },
+                      { id: 'wrong', icon: '⚠️', label: 'Why Am I Wrong?', desc: '/wrong — Find all weaknesses', group: 'Features' },
+                      { id: 'letter', icon: '📄', label: 'Draft Letter', desc: '/letter — Official NLCIL letter', group: 'NLCIL' },
+                      { id: 'report', icon: '📋', label: 'Technical Report', desc: '/report — Formal report', group: 'NLCIL' },
+                      { id: 'mom', icon: '📝', label: 'Meeting Minutes', desc: '/mom — Structure MOM', group: 'NLCIL' },
+                      { id: 'abt', icon: '⚡', label: 'ABT Report', desc: '/abt — Availability Based Tariff', group: 'NLCIL' },
+                    ];
+                    const filtered = q ? cmds.filter(c => c.label.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)) : cmds;
+                    const groups = [...new Set(filtered.map(c => c.group))];
+                    return groups.map(g => `
+                      <div class="mb-2">
+                        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 px-2 py-1 uppercase tracking-wide">${g}</p>
+                        ${filtered.filter(c => c.group === g).map(c => `
+                          <button onclick="runCommand('${c.id}')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-left group">
+                            <span class="text-lg w-6 text-center">${c.icon}</span>
+                            <div class="flex-1 min-w-0">
+                              <p class="text-sm font-medium text-gray-800 dark:text-gray-200">${c.label}</p>
+                              <p class="text-xs text-gray-400 dark:text-gray-500">${c.desc}</p>
+                            </div>
+                          </button>
+                        `).join('')}
+                      </div>
+                    `).join('') || '<p class="text-sm text-gray-400 text-center py-4">No commands found</p>';
+                  })()}
+                </div>
+                <div class="px-4 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center gap-3 text-xs text-gray-400">
+                  <span>↑↓ navigate</span>
+                  <span>↵ select</span>
+                  <span>ESC close</span>
+                  <span class="ml-auto">⌘K / Ctrl+K</span>
                 </div>
               </div>
             </div>
