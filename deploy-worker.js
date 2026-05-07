@@ -27,8 +27,11 @@ function loadEnv() {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const [key, ...rest] = trimmed.split('=');
-    if (key && rest.length) env[key.trim()] = rest.join('=').trim();
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim();
+    if (key) env[key] = val; // last value wins if duplicate
   }
   return env;
 }
@@ -110,6 +113,7 @@ async function deploy() {
   if (GROQ_KEYS.length === 0) { console.error('❌ No GROQ_KEY_* found in .env'); process.exit(1); }
 
   console.log(`✅ Found ${GROQ_KEYS.length} Groq API keys`);
+  console.log(`✅ Token: ${CF_API_TOKEN.slice(0,12)}...${CF_API_TOKEN.slice(-4)} (length: ${CF_API_TOKEN.length})`);
 
   const BASE    = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}`;
   const HEADERS = { 'Authorization': `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/json' };

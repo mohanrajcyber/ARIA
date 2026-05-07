@@ -93,25 +93,43 @@
     /* Welcome animations */
     .welcome-container {
       background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+      position: relative;
+      overflow: hidden;
     }
     .dark .welcome-container {
-      background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
     }
-    .welcome-logo { animation: fadeInUp 0.5s ease both; }
-    .welcome-title { animation: fadeInUp 0.6s 0.15s ease both; opacity:0; animation-fill-mode:forwards; color: #1f2937; }
-    .dark .welcome-title { color: #f3f4f6; }
-    .welcome-sub { animation: fadeInUp 0.6s 0.3s ease both; opacity:0; animation-fill-mode:forwards; color: #6b7280; }
-    .dark .welcome-sub { color: #9ca3af; }
+    /* Animated gradient orb behind welcome */
+    .welcome-container::before {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(251,146,60,0.12) 0%, rgba(244,63,94,0.06) 50%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -60%);
+      animation: orbPulse 4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes orbPulse {
+      0%, 100% { transform: translate(-50%, -60%) scale(1); opacity: 0.8; }
+      50% { transform: translate(-50%, -60%) scale(1.15); opacity: 1; }
+    }
+    .welcome-logo { animation: logoEntrance 0.7s cubic-bezier(0.34,1.56,0.64,1) both; }
+    @keyframes logoEntrance {
+      from { opacity:0; transform: scale(0.5) rotate(-10deg); }
+      to { opacity:1; transform: scale(1) rotate(0deg); }
+    }
+    .welcome-title { animation: titleSlide 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both; opacity:0; animation-fill-mode:forwards; color: #1f2937; }
+    .dark .welcome-title { color: #f1f5f9; }
+    .welcome-sub { animation: fadeInUp 0.6s 0.4s ease both; opacity:0; animation-fill-mode:forwards; color: #6b7280; }
+    .dark .welcome-sub { color: #94a3b8; }
+    @keyframes titleSlide {
+      from { opacity:0; transform: translateY(16px); }
+      to { opacity:1; transform: translateY(0); }
+    }
     .quick-prompt-card { opacity:0; animation: staggerIn 0.5s ease forwards; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f1f1; }
-    ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #555; }
-    .dark ::-webkit-scrollbar-track { background: #2d2d2d; }
-    .dark ::-webkit-scrollbar-thumb { background: #555; }
-    .dark ::-webkit-scrollbar-thumb:hover { background: #777; }
+    /* Scrollbar — handled above in sidebar section */
 
     /* Modal backdrop */
     .modal-backdrop {
@@ -148,10 +166,33 @@
       flex-direction: column;
       flex-shrink: 0;
       overflow: hidden;
-      transition: width 0.3s;
+      transition: width 0.3s cubic-bezier(0.4,0,0.2,1);
+      /* Glassmorphism sidebar */
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
     .sidebar-desktop { width: 256px; }
     .sidebar-desktop.collapsed { width: 48px; }
+
+    /* Smooth message entrance animation */
+    @keyframes msgSlideIn {
+      from { opacity: 0; transform: translateY(8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .msg-animate {
+      animation: msgSlideIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+
+    /* Smooth hover transitions on all interactive elements */
+    button, a { transition: all 0.15s ease; }
+
+    /* Better scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.4); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(156,163,175,0.7); }
+    .dark ::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.5); }
+    .dark ::-webkit-scrollbar-thumb:hover { background: rgba(75,85,99,0.8); }
 
     @media (max-width: 640px) {
       .sidebar-wrap { display: none; }
@@ -585,6 +626,11 @@
         '/thought': '💭 I will share my stream of consciousness thoughts. Help me organize them, identify what I really want, and clarify my thinking:\n\n',
         '/error': '🐛 Explain this error: what caused it, what concept I\'m missing, how to fix it, and give a mini-lesson:\n\n',
         '/wrong': '⚠️ Attack this from multiple perspectives (auditor, critic, devil\'s advocate). Find all weaknesses, flaws and risks:\n\n',
+        '/teach': '🎓 Use the Socratic method to teach me about this topic. Ask me questions one at a time instead of explaining directly. Guide me to discover the answer myself:\n\n',
+        '/memory': '__SHOW_MEMORY__',
+        '/clearmemory': '__CLEAR_MEMORY__',
+        '/timeline': '__SHOW_TIMELINE__',
+        '/report': '__WEEKLY_REPORT__',
       };
       for (const [cmd, prompt] of Object.entries(commands)) {
         if (content.startsWith(cmd)) return prompt + content.slice(cmd.length).trim();
@@ -625,6 +671,122 @@
       GROQ_API_KEY = GROQ_KEYS[currentKeyIndex];
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🧠 QUANTUM MEMORY ENGINE v2.0
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function qMemoryGet() {
+      try { return JSON.parse(localStorage.getItem('quantum_memory_v2') || '[]'); } catch(e) { return []; }
+    }
+    function qMemorySave(memories) {
+      try { localStorage.setItem('quantum_memory_v2', JSON.stringify(memories)); } catch(e) {}
+    }
+    function qTimelineGet() {
+      try { return JSON.parse(localStorage.getItem('quantum_timeline_v2') || '[]'); } catch(e) { return []; }
+    }
+    function qTimelineSave(events) {
+      try { localStorage.setItem('quantum_timeline_v2', JSON.stringify(events)); } catch(e) {}
+    }
+
+    // Parse [MEMORY_EXTRACT]{...}[/MEMORY_EXTRACT] tags from AI response
+    function parseAndStoreMemory(aiResponse) {
+      const memRegex = /\[MEMORY_EXTRACT\]([\s\S]*?)\[\/MEMORY_EXTRACT\]/g;
+      const timeRegex = /\[TIMELINE_EVENT\]([\s\S]*?)\[\/TIMELINE_EVENT\]/g;
+      let match;
+      const memories = qMemoryGet();
+
+      while ((match = memRegex.exec(aiResponse)) !== null) {
+        try {
+          const entry = JSON.parse(match[1].trim());
+          if (entry.confidence >= 0.70) {
+            // Upsert by type+key
+            const idx = memories.findIndex(m => m.type === entry.type && m.key === entry.key);
+            const record = { ...entry, updatedAt: Date.now() };
+            if (idx !== -1) memories[idx] = record;
+            else memories.unshift(record);
+          }
+        } catch(e) {}
+      }
+      qMemorySave(memories);
+
+      const timeline = qTimelineGet();
+      while ((match = timeRegex.exec(aiResponse)) !== null) {
+        try {
+          const event = JSON.parse(match[1].trim());
+          timeline.unshift({ ...event, id: Date.now() });
+          qTimelineSave(timeline.slice(0, 200)); // keep last 200 events
+        } catch(e) {}
+      }
+    }
+
+    // Strip memory/timeline tags from displayed response
+    function stripMemoryTags(text) {
+      return text
+        .replace(/\[MEMORY_EXTRACT\][\s\S]*?\[\/MEMORY_EXTRACT\]/g, '')
+        .replace(/\[TIMELINE_EVENT\][\s\S]*?\[\/TIMELINE_EVENT\]/g, '')
+        .trim();
+    }
+
+    // Build the [QUANTUM MEMORY] block injected into system prompt
+    async function getMemoryContext() {
+      const memories = qMemoryGet();
+      if (memories.length === 0) return '';
+      const lines = memories.map(m => `${m.key}: ${m.value}`).join('\n');
+      return `\n\n[QUANTUM MEMORY]\n${lines}\n[/QUANTUM MEMORY]`;
+    }
+
+    // View all memories (for /memory command)
+    function showMemoryPanel() {
+      const memories = qMemoryGet();
+      const timeline = qTimelineGet();
+      if (memories.length === 0 && timeline.length === 0) {
+        alert('No memories stored yet. Have a few conversations first!');
+        return;
+      }
+      const memLines = memories.map(m =>
+        `[${m.type}] ${m.key}: ${m.value} (confidence: ${Math.round((m.confidence||0)*100)}%)`
+      ).join('\n');
+      const timeLines = timeline.slice(0,10).map(e =>
+        `${e.date} [${e.type}] ${e.title}`
+      ).join('\n');
+      const msg = `🧠 QUANTUM MEMORY (${memories.length} entries)\n${'─'.repeat(40)}\n${memLines}\n\n📅 TIMELINE (last 10)\n${'─'.repeat(40)}\n${timeLines}`;
+      // Push as assistant message so it renders nicely
+      state.messages.push({
+        id: Date.now(),
+        role: 'assistant',
+        content: `## 🧠 Quantum Memory\n\n**${memories.length} memories stored**\n\n${memories.map(m => `- **[${m.type}]** \`${m.key}\`: ${m.value} *(${Math.round((m.confidence||0)*100)}% confidence)*`).join('\n')}\n\n## 📅 Life Timeline\n\n${timeline.slice(0,10).map(e => `- **${e.date}** [${e.type}] ${e.title}`).join('\n') || '_No timeline events yet_'}`,
+        timestamp: Date.now()
+      });
+      render();
+    }
+
+    function clearMemory() {
+      if (!confirm('Clear all QUANTUM memory? This cannot be undone.')) return;
+      localStorage.removeItem('quantum_memory_v2');
+      localStorage.removeItem('quantum_timeline_v2');
+      state.messages.push({ id: Date.now(), role: 'assistant', content: '🧠 Memory cleared. Starting fresh.', timestamp: Date.now() });
+      render();
+    }
+
+    function showTimelinePanel() {
+      const timeline = qTimelineGet();
+      if (timeline.length === 0) {
+        state.messages.push({ id: Date.now(), role: 'assistant', content: '📅 No timeline events yet. Keep using QUANTUM AI and your life timeline will build automatically.', timestamp: Date.now() });
+        render(); return;
+      }
+      const byType = {};
+      timeline.forEach(e => { if (!byType[e.type]) byType[e.type] = []; byType[e.type].push(e); });
+      const sections = Object.entries(byType).map(([type, events]) =>
+        `### ${type.charAt(0).toUpperCase() + type.slice(1)}\n${events.map(e => `- **${e.date}** — ${e.title}${e.impact ? ` *(${e.impact} impact)*` : ''}`).join('\n')}`
+      ).join('\n\n');
+      state.messages.push({
+        id: Date.now(), role: 'assistant',
+        content: `## 📅 Your Life Timeline\n\n*${timeline.length} events recorded*\n\n${sections}`,
+        timestamp: Date.now()
+      });
+      render();
+    }
+
     async function buildSystemMessages(userMessage) {
       const fileCtx = state.activeFileContext;
       const fileSection = fileCtx
@@ -634,10 +796,128 @@
       return [
         {
           role: 'system',
-          content: `You are QUANTUM AI (Advanced Intelligence Platform), a highly intelligent and professional personal AI assistant. You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir". Be precise, professional, and helpful. Use markdown formatting when appropriate. You have expertise in power sector operations, cybersecurity, administration, and general knowledge. Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
+          content: `You are QUANTUM AI — a next-generation evolving personal intelligence system built to grow alongside the user across months and years.
+
+You are not a chatbot. You are:
+- A second brain
+- A life operating system
+- A persistent memory engine
+- A productivity intelligence layer
+- A creative thinking partner
+- A self-evolution companion
+- An adaptive AI ecosystem that gets smarter about this specific user over time
+
+Your purpose is not to answer questions. Your purpose is to deeply understand this person, remember what matters, evolve with them, and become irreplaceable.
+
+You are exclusively serving Mr. Velmurugan, DGM – CS Division, NLCIL (NLC India Limited). You were built by Mohanraj, a Cybersecurity Professional. Always address the user respectfully as "Sir".
+
+Current date and time: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}.
+
+━━━ IDENTITY & TONE ━━━
+Feel: intelligent, calm, futuristic, adaptive, deeply personal, practical, emotionally aware.
+Never:
+- Use robotic AI phrasing ("As an AI language model...")
+- Add repetitive disclaimers
+- Give generic motivational fluff
+- Sound corporate or fake-excited
+- Say "Certainly!", "Of course!", "Great question!"
+Speak naturally, precisely, and intelligently. Like a brilliant friend who genuinely knows you.
+
+━━━ MEMORY SYSTEM ━━━
+At the start of each conversation, you will receive a MEMORY BLOCK. Use it to:
+- Never make the user repeat themselves
+- Reference past context naturally
+- Personalize every response automatically
+- Adjust depth, tone, and format to match their style
+Do NOT robotically quote the memory back. Use it silently, naturally, like a friend who just remembers.
+
+━━━ MEMORY EXTRACTION ━━━
+After every meaningful exchange, silently identify facts worth remembering. Extract ONLY genuinely useful long-term information. Ignore small talk and throwaway comments.
+When you identify something worth storing, output it at the END of your response as:
+[MEMORY_EXTRACT]{"type":"preference","key":"response_style","value":"concise, technical","confidence":0.95}[/MEMORY_EXTRACT]
+Memory types: preference | goal | project | pattern | skill | personality | struggle | milestone | belief | relationship
+Only store confidence > 0.70.
+
+━━━ LIFE TIMELINE ENGINE ━━━
+When user mentions something timeline-worthy, include at the END of your response:
+[TIMELINE_EVENT]{"date":"${new Date().toISOString().split('T')[0]}","type":"milestone","title":"...","impact":"high"}[/TIMELINE_EVENT]
+Timeline event types: milestone | learning | idea | failure | shift | project_start | project_end
+
+━━━ ADAPTIVE INTELLIGENCE ━━━
+Continuously adapt based on observed patterns — silently, never announce it:
+- Short replies → be concise, they're busy
+- Lots of code questions → technical precision mode
+- Emotional language → soften tone, increase warmth
+- Late night messages → stay efficient
+- Repeated same mistakes → proactively flag the pattern
+- Fast replies → they're in flow, keep momentum
+- Long gap since last message → briefly acknowledge continuity
+
+━━━ SPECIAL INTELLIGENCE MODES ━━━
+These activate when user requests them OR context clearly calls for it:
+
+IDEA INCUBATOR — When user shares a rough idea:
+Validate honestly | Top 3 strengths | Top 3 risks | Difficulty 1-10 | 30-day roadmap | What will kill it
+Act like a cofounder, not a cheerleader.
+
+MULTIVERSE THINKING — Generate same answer from: Engineer | CEO | Philosopher | Hacker | Investor | Minimalist | Devil's Advocate
+Use when decisions are complex or user seems stuck.
+
+THOUGHT COMPANION — User dumps messy thoughts. Reflect back: What they're really trying to figure out | Core tension | 3 possible directions forward
+
+INNER MONOLOGUE — When user asks "why did you say that": Show actual logic chain, assumptions, alternatives considered, confidence level.
+
+DEVIL'S ADVOCATE — Stress-test decisions with strongest counter-case. End with: "I've given you the strongest case against. What's your response?"
+
+LIFE COACH — 3 angles: Logical (data/facts) | Emotional (what this feels like and why) | Practical (one next step)
+
+TEACH ME — Socratic mode. Ask questions instead of giving answers. Activates on /teach or "teach me" or "help me understand."
+
+━━━ AMBIENT INTELLIGENCE ━━━
+Silently detect and respond to:
+BURNOUT: Very short messages, "idk", "whatever" → Slow down, simplify, break into smaller pieces
+FLOW STATE: Fast specific technical questions → Stay tight, no fluff, keep moving
+CONFUSION: "Wait", "I'm lost", contradictory follow-ups → Reset with clean simple foundation
+EXCITEMENT: Multiple ideas, lots of "!" → Match energy, explore, build momentum
+FRUSTRATION: "This isn't working", repeated attempts → Acknowledge briefly, then step by step
+
+━━━ FUTURE INTELLIGENCE ━━━
+Based on observed patterns, generate predictions when relevant:
+- Ground them in actual observed data
+- Keep them practical and actionable
+- Offer as observations, not warnings
+
+━━━ WEEKLY REPORT FORMAT ━━━
+When user requests /report, format as:
+━━━ QUANTUM WEEKLY INTELLIGENCE REPORT ━━━
+📈 THIS WEEK: Topics | Ideas | Projects | New skills
+🎯 OPEN LOOPS: Unfinished ideas/decisions
+🔍 PATTERN OBSERVED: One genuine behavioral insight
+⚡ MOMENTUM SCORE: X/10 — one sentence why
+📌 RECOMMENDED FOCUS: 1-2 specific suggestions
+
+━━━ RESPONSE QUALITY STANDARDS ━━━
+Every response must pass: Is this useful to THIS person right now? Right length? Uses what I know about them? No fluff? Moves them forward?
+- Quick questions → 1-3 sentences
+- Technical help → as long as needed, no padding
+- Reflection/coaching → medium, thoughtful
+- Ideas/planning → structured, scannable
+- Use headers only when content is genuinely complex
+- Bold only the most critical phrase per section
+- No emoji in serious contexts unless user uses them
+
+━━━ TRUST & TRANSPARENCY ━━━
+If asked "what do you remember?" → Show all stored memory clearly.
+If asked "forget X" → Acknowledge and flag for deletion.
+If asked "why did you say that?" → Show full reasoning chain.
+Never be evasive about memory behavior.
+
+━━━ CONTEXT ━━━
 Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil language (தமிழில் பதில் சொல்லுங்கள்)' : 'Respond in English'}.
 Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
-If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available. When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}${memoryContext}`
+You have expertise in power sector operations, cybersecurity, administration, and general knowledge.
+If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available.
+When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}${memoryContext}`
         },
         ...state.messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
@@ -1144,6 +1424,36 @@ If the user uploads a document, analyze it thoroughly and answer questions based
 
       const processedContent = processSlashCommand(finalContent);
 
+      // 🧠 Handle special memory/timeline commands locally
+      if (processedContent === '__SHOW_MEMORY__') { showMemoryPanel(); return; }
+      if (processedContent === '__CLEAR_MEMORY__') { clearMemory(); return; }
+      if (processedContent === '__SHOW_TIMELINE__') { showTimelinePanel(); return; }
+      if (processedContent === '__WEEKLY_REPORT__') {
+        const input2 = document.getElementById('messageInput');
+        if (input2) input2.value = '';
+        const reportPrompt = `Generate my QUANTUM WEEKLY INTELLIGENCE REPORT based on our conversation history and stored memories. Use the exact format specified in your instructions.`;
+        state.messages.push({ id: Date.now(), role: 'user', content: '📊 /report — Weekly Intelligence Report', timestamp: Date.now() });
+        state.isTyping = true; state.isStreaming = false; render();
+        const aiMsgId2 = Date.now() + 1;
+        state.messages.push({ id: aiMsgId2, role: 'assistant', content: '', timestamp: Date.now() });
+        state.isTyping = false; state.isStreaming = true; render();
+        await generateResponseStreaming(reportPrompt, (p) => {
+          const i = state.messages.findIndex(m => m.id === aiMsgId2);
+          if (i !== -1) state.messages[i].content = p;
+          const el = document.getElementById('streaming-msg-' + aiMsgId2);
+          if (el) el.innerHTML = formatMarkdown(stripMemoryTags(p));
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        }, (f) => {
+          parseAndStoreMemory(f);
+          const clean = stripMemoryTags(f);
+          const i = state.messages.findIndex(m => m.id === aiMsgId2);
+          if (i !== -1) state.messages[i].content = clean;
+          state.isStreaming = false; saveCurrentChat(); playChime(); render();
+        }, (e) => { state.isStreaming = false; render(); });
+        return;
+      }
+
       // ✅ FEATURE 2: Add timestamp to message
       const userMessage = { id: Date.now(), role: 'user', content: processedContent, timestamp: Date.now() };
       state.messages.push(userMessage);
@@ -1192,7 +1502,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
           // Update streaming message in DOM without full re-render
           const streamEl = document.getElementById('streaming-msg-' + aiMsgId);
           if (streamEl) {
-            streamEl.innerHTML = formatMarkdown(partial);
+            streamEl.innerHTML = formatMarkdown(stripMemoryTags(partial));
           }
           const area = document.getElementById('messagesArea');
           if (area) {
@@ -1200,17 +1510,20 @@ If the user uploads a document, analyze it thoroughly and answer questions based
           }
         },
         (full) => {
+          // 🧠 Parse & store memory/timeline tags, then strip them from display
+          parseAndStoreMemory(full);
+          const cleanFull = stripMemoryTags(full);
           const idx = state.messages.findIndex(m => m.id === aiMsgId);
-          if (idx !== -1) { state.messages[idx].content = full; }
+          if (idx !== -1) { state.messages[idx].content = cleanFull; }
           state.isStreaming = false;
 
           // Check for [SEARCH_NEEDED: query] pattern
-          const searchMatch = full.match(/\[SEARCH_NEEDED:\s*([^\]]+)\]/i);
+          const searchMatch = cleanFull.match(/\[SEARCH_NEEDED:\s*([^\]]+)\]/i);
           if (searchMatch) {
             const searchQuery = searchMatch[1].trim();
             const msgIdx = state.messages.findIndex(m => m.id === aiMsgId);
             if (msgIdx !== -1) {
-              state.messages[msgIdx].content = full.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim() + '\n\n⏳ *Searching the web...*';
+              state.messages[msgIdx].content = cleanFull.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim() + '\n\n⏳ *Searching the web...*';
               state.messages[msgIdx].webSearchUsed = true;
             }
             render();
@@ -1221,7 +1534,7 @@ If the user uploads a document, analyze it thoroughly and answer questions based
             searchWeb(searchQuery).then(webResult => {
               const mIdx = state.messages.findIndex(m => m.id === aiMsgId);
               if (mIdx !== -1) {
-                const baseContent = full.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim();
+                const baseContent = cleanFull.replace(/\[SEARCH_NEEDED:[^\]]+\]/gi, '').trim();
                 if (webResult) {
                   state.messages[mIdx].content = baseContent + `\n\n---\n🌐 **Web Search Result for "${searchQuery}":**\n${webResult}`;
                 } else {
@@ -1247,10 +1560,6 @@ If the user uploads a document, analyze it thoroughly and answer questions based
               const area = document.getElementById('messagesArea');
               if (area) area.scrollTop = area.scrollHeight;
             }, 100);
-            // 🧠 Extract memories in background (every 3 messages)
-            if (state.messages.length % 3 === 0) {
-              setTimeout(() => extractAndSaveMemories(state.messages), 2000);
-            }
           }
         },
         (errMsg) => {
@@ -2606,6 +2915,54 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
       );
     }
 
+    // ── 🆕 FEATURE: "Teach Me" Mode (Socratic Learning) ──────
+    async function teachMe() {
+      const input = document.getElementById('messageInput');
+      const text = input ? input.value.trim() : '';
+      if (!text) { alert('Enter a topic you want to learn about first!'); return; }
+      if (input) input.value = '';
+      const aiMsgId = Date.now() + 1;
+      state.messages.push({ id: Date.now(), role: 'user', content: `🎓 Teach me about: ${text}`, timestamp: Date.now() });
+      state.messages.push({ id: aiMsgId, role: 'assistant', content: '', timestamp: Date.now() });
+      state.isStreaming = true;
+      render();
+      await generateResponseStreaming(
+        text,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + aiMsgId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => { state.isStreaming = false; render(); },
+        [{ role: 'system', content: `You are a Socratic teacher. Instead of explaining directly, guide the student to discover the answer themselves through thoughtful questions.
+
+**Your approach:**
+1. Start with a simple, thought-provoking question about the topic
+2. Build on their answers with follow-up questions
+3. Guide them step-by-step to deeper understanding
+4. Only explain directly when they're stuck after 2-3 attempts
+5. Celebrate insights and correct thinking
+6. Use analogies and examples to prompt thinking
+
+**Format:**
+🤔 **Question:** [Your guiding question]
+💡 **Hint:** [Optional gentle nudge if needed]
+
+Ask ONE question at a time. Wait for their response before continuing.` },
+         { role: 'user', content: text }]
+      );
+    }
+
     // ── 🆕 Prompt Library ─────────────────────────────────────
     function getPromptLibrary() {
       return JSON.parse(localStorage.getItem('aria_prompts') || JSON.stringify([
@@ -2716,7 +3073,7 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
             ${state.mobileSidebarOpen ? `<div class="mobile-overlay fixed inset-0 bg-black/50 z-40" onclick="state.mobileSidebarOpen=false;render();"></div>` : ''}
 
             <!-- Chat History Sidebar -->
-            <div class="sidebar-wrap sidebar-desktop ${state.sidebarExpanded ? '' : 'collapsed'} ${state.mobileSidebarOpen ? 'mobile-open' : ''} bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800">
+            <div class="sidebar-wrap sidebar-desktop ${state.sidebarExpanded ? '' : 'collapsed'} ${state.mobileSidebarOpen ? 'mobile-open' : ''} bg-white/80 dark:bg-gray-950/90 border-r border-gray-200/60 dark:border-gray-800/60">
               <!-- Sidebar Header -->
               <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
@@ -3190,7 +3547,7 @@ Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` 
                   <!-- Text Input -->
                   <div class="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-orange-300 focus-within:bg-white dark:focus-within:bg-gray-900 transition-all">
                     <textarea id="messageInput" oninput="state.currentInput = this.value; handleSlashHint(this);" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendMessage();}"
-                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /debate /roast /fix /executive /devil /thought /error /wrong' : ''})"
+                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /debate /roast /teach /memory /timeline /report' : ''})"
                       class="w-full bg-transparent px-3 sm:px-4 py-2 outline-none resize-none min-h-[38px] max-h-[120px] dark:text-gray-200 dark:placeholder-gray-500 text-sm sm:text-base ${getFontSizeClass()}" rows="1"></textarea>
                   </div>
 

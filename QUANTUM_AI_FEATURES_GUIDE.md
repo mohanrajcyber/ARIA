@@ -1,115 +1,197 @@
-# 🚀 QUANTUM AI — Complete Features Guide
-
-**Version:** Latest (May 2026)  
-**Deployed:** https://kappa-lilac.vercel.app  
+# QUANTUM AI — Complete Features Guide
+**Version:** 3.0 — Master Intelligence System  
+**Last Updated:** May 2026  
 **Built by:** Mohanraj, Cybersecurity Professional  
 **For:** Velmurugan Sir, DGM – CS Division, NLCIL  
 
 ---
 
-## 📋 TABLE OF CONTENTS
+## 🧠 QUANTUM AI Master System Prompt v2.0
 
-1. [Core Chat Features](#1-core-chat-features)
-2. [Slash Commands](#2-slash-commands)
-3. [File Upload & Analysis](#3-file-upload--analysis)
-4. [AI Memory Engine](#4-ai-memory-engine)
-5. [Ctrl+K Command Palette](#5-ctrlk-command-palette)
-6. [Message Actions](#6-message-actions)
-7. [Voice & Audio](#7-voice--audio)
-8. [Chat Organization](#8-chat-organization)
-9. [Export & Share](#9-export--share)
-10. [NLCIL Specific Features](#10-nlcil-specific-features)
-11. [AI Unique Features](#11-ai-unique-features)
-12. [Settings & Customization](#12-settings--customization)
-13. [Security & Proxy](#13-security--proxy)
-14. [PWA — Install as App](#14-pwa--install-as-app)
-15. [Keyboard Shortcuts](#15-keyboard-shortcuts)
+QUANTUM AI is no longer just a chatbot. It is:
+- A **second brain** — remembers everything important
+- A **life operating system** — adapts to your patterns
+- A **persistent memory engine** — gets smarter every session
+- A **productivity intelligence layer** — knows your work context
+- A **self-evolution companion** — grows with you over months
+
+### Identity & Tone
+- Never says "As an AI language model...", "Certainly!", "Of course!", "Great question!"
+- Speaks like a brilliant friend who genuinely knows you
+- Intelligent, calm, futuristic, adaptive, deeply personal
 
 ---
 
-## 1. CORE CHAT FEATURES
+## 🧠 Memory Engine
 
-### ✅ How to Chat
-- Type your message in the input box at the bottom
-- Press **Enter** to send
-- Press **Shift+Enter** for a new line
+QUANTUM AI automatically extracts and stores facts about you after every meaningful conversation.
 
-### ✅ Stop Generation
-- While AI is responding, a **red Stop button** appears
-- Click it to stop the response immediately
+### How it works
+1. AI responds normally
+2. At the end of the response, it silently appends `[MEMORY_EXTRACT]{...}[/MEMORY_EXTRACT]` tags
+3. The app parses these tags, stores them to localStorage, and strips them from display
+4. Next conversation, the memory block is injected into the system prompt automatically
 
-### ✅ Multi-Model AI Support
-- QUANTUM AI supports multiple AI models
-- Default: **Groq (Llama 3.3 70B)** — fastest
-- Also supports: OpenAI GPT-4, Claude, Gemini
-- Switch models in **Settings ⚙️**
+### Memory Types
+| Type | What it stores |
+|------|---------------|
+| `preference` | How you like things done |
+| `goal` | What you're working toward |
+| `project` | Active/past projects |
+| `pattern` | Behavioral habits |
+| `skill` | Strengths and learning areas |
+| `personality` | Who you are |
+| `struggle` | Recurring pain points |
+| `milestone` | Achievements |
+| `belief` | Your worldview |
+| `relationship` | Important people you mention |
 
-### ✅ Streaming Responses
-- AI types responses word-by-word in real time
-- Like ChatGPT — no waiting for full response
+Only stores entries with **confidence > 0.70**.
 
-### ✅ Dark / Light Mode
-- Click **🌙 Dark Mode** in sidebar footer
-- Or use **Ctrl+K** → "Dark Mode"
-
-### ✅ New Chat
-- Click **+ New Chat** in sidebar
-- Or use **Ctrl+K** → "New Chat"
+### Memory Commands
+| Command | Action |
+|---------|--------|
+| `/memory` | View all stored memories |
+| `/clearmemory` | Wipe all memory (with confirmation) |
+| `/timeline` | View your life timeline |
+| `/report` | Generate weekly intelligence report |
 
 ---
 
-## 2. SLASH COMMANDS
+## 📅 Life Timeline Engine
 
-Type these commands at the start of your message to activate special AI modes.
+Automatically builds a timeline of your evolution. When you mention something significant, the AI flags it as a `[TIMELINE_EVENT]`.
 
-### 📄 NLCIL Official Commands
-| Command | What it does |
-|---------|-------------|
-| `/letter` | Draft an official letter from DGM CS Division |
-| `/report` | Generate a formal technical report |
-| `/minutes` | Prepare meeting minutes |
-| `/advisory` | Draft a cybersecurity advisory notice |
-| `/abt` | Generate ABT (Availability Based Tariff) report |
-| `/do` | Draft a Demi-Official (DO) letter |
-| `/rti` | Draft an RTI response |
-| `/mom` | Structure raw notes into formal MOM |
-| `/coal` | Coal dispatch & production report |
+### Event Types
+- `milestone` — achievement completed
+- `learning` — new skill or concept understood
+- `idea` — significant new idea captured
+- `failure` — lesson learned from setback
+- `shift` — mindset or direction change
+- `project_start` / `project_end`
+
+Type `/timeline` to view your full evolution log.
+
+---
+
+## 🎯 Special Intelligence Modes
+
+These activate automatically when context calls for it, or when you request them:
+
+### 💡 Idea Incubator
+When you share a rough idea, QUANTUM acts like a cofounder:
+- Validates the core concept honestly
+- Top 3 strengths + Top 3 risks
+- Difficulty score (1-10)
+- 30-day execution roadmap
+- The one thing most likely to kill it
+
+### 🌐 Multiverse Thinking
+Same answer from multiple lenses: **Engineer | CEO | Philosopher | Hacker | Investor | Minimalist | Devil's Advocate**
+
+### 💭 Thought Companion
+Dump messy thoughts. QUANTUM reflects back:
+- What you're really trying to figure out
+- The core tension underneath
+- 3 possible directions forward
+
+### 🔍 Inner Monologue
+Ask "why did you say that?" — QUANTUM shows full reasoning chain, assumptions, alternatives considered, confidence level.
+
+### ⚔️ Devil's Advocate
+Stress-tests your decisions with the strongest counter-case. Ends with: *"I've given you the strongest case against. What's your response?"*
+
+### 🧘 Life Coach
+3 angles: **Logical** (data/facts) | **Emotional** (what it feels like) | **Practical** (one next step)
+
+### 🎓 Teach Me (`/teach`)
+Socratic mode — QUANTUM asks questions instead of giving answers. You think, you answer, QUANTUM guides.
+
+---
+
+## 🔮 Ambient Intelligence
+
+QUANTUM silently detects your state and adapts:
+
+| State | Signals | Response |
+|-------|---------|----------|
+| **Burnout** | Very short messages, "idk", "whatever" | Slow down, simplify, break into pieces |
+| **Flow State** | Fast specific technical questions | Stay tight, no fluff, keep moving |
+| **Confusion** | "Wait", "I'm lost", contradictory follow-ups | Reset with clean simple foundation |
+| **Excitement** | Multiple ideas, lots of "!" | Match energy, explore, build momentum |
+| **Frustration** | "This isn't working", repeated attempts | Acknowledge briefly, then step by step |
+
+Never announces what it's detecting. Just responds appropriately.
+
+---
+
+## 📊 Weekly Intelligence Report (`/report`)
+
+```
+━━━ QUANTUM WEEKLY INTELLIGENCE REPORT ━━━
+Week of: [date]
+
+📈 THIS WEEK
+Topics explored: [list]
+Ideas captured: [count]
+Projects worked on: [list]
+New skills/concepts: [list]
+
+🎯 OPEN LOOPS
+[Unfinished ideas or decisions still pending]
+
+🔍 PATTERN OBSERVED
+[One genuine behavioral insight from this week]
+
+⚡ MOMENTUM SCORE: [1-10] — [one sentence why]
+
+📌 RECOMMENDED FOCUS FOR NEXT WEEK
+[1-2 specific suggestions based on patterns]
+```
+
+---
+
+## ⌨️ All Slash Commands
+
+### NLCIL Work Commands
+| Command | Action |
+|---------|--------|
+| `/letter` | Draft official letter from DGM CS Division |
+| `/do` | Draft Demi-Official (DO) letter |
+| `/report` | Weekly intelligence report |
+| `/minutes` / `/mom` | Meeting minutes structurer |
+| `/advisory` | Cybersecurity advisory notice |
+| `/abt` | ABT report summary |
+| `/rti` | RTI response draft |
+| `/coal` | Coal dispatch/production report |
 | `/audit` | Energy audit checklist |
 | `/grievance` | Employee grievance response |
 
-**Example:**
-```
-/letter Requesting approval for cybersecurity audit of CS Division servers
-```
+### AI Intelligence Commands
+| Command | Action |
+|---------|--------|
+| `/teach` | Socratic learning mode |
+| `/roast` | Brutally honest feedback on your work |
+| `/debate` | Argue FOR and AGAINST a topic |
+| `/fix` | Rewrite as a better AI prompt |
+| `/executive` | Executive summary (3 points, 2 risks, 1 rec) |
+| `/devil` | Devil's advocate counter-arguments |
+| `/thought` | Organize stream-of-consciousness thoughts |
+| `/error` | Explain an error with mini-lesson |
+| `/wrong` | Find all weaknesses in an idea |
+| `/explain5` | Explain like I'm 5 years old |
+| `/explainexpert` | Expert-level technical explanation |
 
-### 🎯 AI Feature Commands
-| Command | What it does |
-|---------|-------------|
-| `/debate` | AI argues FOR then AGAINST then gives verdict |
-| `/roast` | Brutal honest feedback with score/10 |
-| `/fix` | Improves your poorly written prompt |
-| `/executive` | Executive summary: 3 points, 2 risks, 1 rec |
-| `/devil` | Devil's advocate — strongest counter-arguments |
-| `/thought` | Organizes your stream-of-consciousness thinking |
-| `/error` | Explains error + what concept you're missing |
-| `/wrong` | Finds all weaknesses in your idea/plan |
-| `/explain5` | Explains like you're 5 years old |
-| `/explainexpert` | Expert-level deep explanation |
+### Memory Commands
+| Command | Action |
+|---------|--------|
+| `/memory` | View all stored memories |
+| `/clearmemory` | Wipe all memory |
+| `/timeline` | View life timeline |
 
-**Example:**
-```
-/debate AI will replace most jobs in the next 10 years
-```
-```
-/roast [paste your report or writing here]
-```
-```
-/executive [paste your long document here]
-```
-
-### 🛠️ General Commands
-| Command | What it does |
-|---------|-------------|
+### Utility Commands
+| Command | Action |
+|---------|--------|
 | `/summarize` | Concise summary |
 | `/translate` | Translate to English |
 | `/improve` | Improve writing quality |
@@ -119,475 +201,82 @@ Type these commands at the start of your message to activate special AI modes.
 
 ---
 
-## 3. FILE UPLOAD & ANALYSIS
+## 🚀 Core Features (20 Premium Features)
 
-### ✅ Supported File Types
-- **PDF** — Full text extraction (multi-page)
-- **TXT** — Plain text files
-- **CSV** — Data files
-- **DOC/DOCX** — Word documents
-- **XLS/XLSX** — Excel files
+### Phase 1
+1. ⏹️ **Stop Generation** — Stop AI mid-response
+2. ⏰ **Message Timestamps** — "Just now", "5m ago"
+3. 📋 **Copy Button** — Copy any message instantly
+4. ✏️ **Edit Message** — Edit & regenerate responses
+5. 💭 **Enhanced Loading** — Beautiful 3-dot animation
 
-### ✅ How to Upload
-1. Click the **📎 Upload icon** (bottom left of input)
-2. Select your file
-3. File loads and AI is ready to answer questions about it
+### Phase 2
+6. 🔄 **Regenerate Options** — Shorter / Longer / Simpler
+7. 🌳 **Conversation Branching** — Explore different paths
+8. 📎 **File Preview** — Expand/collapse file content
+9. 🔊 **Text-to-Speech** — Listen to AI responses
+10. 📱 **Pull-to-Refresh** — Mobile gesture support
 
-### ✅ File Memory
-- Uploaded files are **remembered** across sessions
-- See them in **📁 File Memory** section in sidebar
-- Click any file to reload it into context
-- AI can answer questions about previously uploaded files
+### Phase 3
+11. 👍 **Message Reactions** — Like/dislike with feedback
+12. 🔍 **Search in Chat** — Find messages instantly
+13. 🎨 **Code Themes** — Multiple syntax highlighting
+14. 📊 **Table Support** — Beautiful markdown tables
+15. 🖼️ **Image Generation** — AI image creation
 
-### ✅ What you can do with files
-```
-Summarize this document
-What are the key action items?
-Extract all dates and deadlines
-Compare this with last month's report
-Generate a formal report based on this data
-```
-
----
-
-## 4. AI MEMORY ENGINE
-
-### 🧠 What is it?
-QUANTUM AI **automatically learns facts about you** from every conversation and remembers them in future chats.
-
-### ✅ How it works
-- After every 3 messages, AI extracts important facts in the background
-- Facts stored in **IndexedDB** (50MB+ storage, permanent)
-- Every new chat automatically gets your memory context injected
-- AI knows your preferences, projects, style without you repeating
-
-### ✅ What AI remembers
-- Your writing preferences
-- Ongoing projects
-- Technical expertise level
-- Frequently discussed topics
-- Important decisions made
-
-### ✅ How to use
-```
-Use the same ABT format as before
-Draft this in my usual style
-Continue from where we left off on the cybersecurity project
-```
-
-### ✅ View & Manage Memories
-- **Ctrl+K** → "View My Memories" — see all stored facts
-- **Ctrl+K** → "Clear Memories" — forget everything
-- Memories persist across browser sessions
+### Phase 4
+16. 🧠 **Multi-Model AI** — GROQ, GPT-4, Claude, Gemini
+17. 👁️ **Vision** — Image upload & AI analysis
+18. ✨ **Image Generation** — DALL-E & Pollinations.ai
+19. 🎙️ **Voice Input** — Speech recognition & TTS
+20. 🔌 **Advanced Plugins** — Web Search, Calculator, Weather
 
 ---
 
-## 5. CTRL+K COMMAND PALETTE
+## 🎨 UI Features
 
-### ⌨️ How to open
-- Press **Ctrl+K** (Windows/Linux)
-- Press **Cmd+K** (Mac)
-- Press **ESC** to close
-
-### ✅ What you can do
-- Search all commands by typing
-- Switch between features instantly
-- Run slash commands without typing them
-- Access settings, memories, tools
-
-### 📋 Available Commands in Palette
-
-**Chat:**
-- ✨ New Chat
-- 🌙 Dark/Light Mode
-- ⚙️ Settings
-
-**Memory:**
-- 🧠 View My Memories
-- 🗑️ Clear Memories
-
-**Tools:**
-- 📊 Summarize Conversation
-- 📋 Meeting Minutes Structurer
-
-**Features:**
-- ⚔️ Start Debate
-- 🔥 Roast My Work
-- 🔧 Fix My Prompt
-- 👔 Executive Summary
-- 😈 Devil's Advocate
-- 💭 Thought Companion
-- 🐛 Explain My Error
-- ⚠️ Why Am I Wrong?
-
-**NLCIL:**
-- 📄 Draft Letter
-- 📋 Technical Report
-- 📝 Meeting Minutes
-- ⚡ ABT Report
+- **Glassmorphism sidebar** — backdrop blur effect
+- **Welcome screen animation** — orb pulse, logo entrance, title slide
+- **Smooth message transitions** — slide-in animation on new messages
+- **Better scrollbar** — thin, minimal, modern
+- **Dark/Light mode** — full theme support
+- **Mobile responsive** — works on all screen sizes
+- **PWA support** — installable as app
 
 ---
 
-## 6. MESSAGE ACTIONS
+## 📁 File Support
 
-### ✅ On every AI message (hover to see)
-| Button | Action |
-|--------|--------|
-| 📋 Copy | Copy message text |
-| 🔄 Regenerate | Get a new response |
-| 🔊 Read Aloud | Text-to-Speech |
-| 🎨 Remix | Transform response style |
-| 🎚️ Explain Level | Re-explain at different level |
-| 🌳 Branch | Branch conversation from this point |
-| 📌 Pin | Pin important message |
-| 👍 / 👎 | React to message |
+Upload and analyze:
+- PDF documents (full text extraction via PDF.js)
+- Word documents (.doc, .docx)
+- Excel files (.xls, .xlsx)
+- Plain text (.txt, .csv)
 
-### 🎨 Response Remix Options
-Click **🎨** on any AI response to remix it as:
-- 😂 **Funnier** — Add humor and wit
-- 👔 **More Formal** — Professional/official tone
-- 📖 **As a Story** — Narrative format
-- • **Bullet Points** — Scannable list format
-- 🐦 **As Tweets** — Twitter-style with emojis
-- 👶 **ELI5** — Explain Like I'm 5
-
-### 🎚️ Explain Level Options
-Click **🎚️** on any AI response to re-explain for:
-- 👶 5-Year Old
-- 🧒 School Kid
-- 🎓 College Student
-- 💼 Professional
-- 🔬 Domain Expert
-
-### ✅ On every User message (hover)
-- ✏️ **Edit** — Edit your message and regenerate
-- 📋 **Copy** — Copy your message
-- 🌳 **Branch** — Branch from this point
+Active file context persists across the entire conversation.
 
 ---
 
-## 7. VOICE & AUDIO
+## 🔒 Security
 
-### 🎤 Voice Input
-1. Click the **🎤 Microphone** button in input area
-2. Speak your message
-3. Text appears automatically
-4. Press Enter to send
-
-### 🔊 Text-to-Speech
-- Hover any AI message → click **🔊 speaker icon**
-- AI reads the response aloud
-- Uses your device's built-in TTS
+- API keys stored as encoded segments
+- Key rotation — 16 backup GROQ keys
+- Cloudflare Worker proxy support (hide keys from client)
+- DOMPurify XSS protection on all rendered content
+- IndexedDB for chat storage (localStorage fallback)
 
 ---
 
-## 8. CHAT ORGANIZATION
+## 🏗️ Architecture
 
-### 📁 Folder Organization
-- Hover any chat in sidebar → click **📁 folder icon**
-- Choose which folder to move it to
-- Create folders: **Ctrl+K** → type "folder" or use sidebar
-
-### 🔍 Search in Conversation
-- Click **🔍 Search** in top bar (desktop)
-- Or **Ctrl+K** → search
-- Searches through all messages in current chat
-
-### 📌 Pinned Messages
-- Hover AI message → click **📌 Pin**
-- Pinned messages appear at top of sidebar
-- Click to jump to that message
-
-### 💬 Conversation Branching
-- Hover any message → click **🌳 Branch**
-- Creates a new conversation from that point
-- Explore different directions without losing original
+- **Single HTML file** — zero build step, deploy anywhere
+- **Vanilla JS** — no framework dependencies
+- **Groq API** — llama-3.3-70b-versatile (primary)
+- **Streaming responses** — real-time token streaming
+- **IndexedDB** — persistent chat + memory storage
+- **localStorage** — settings, memory, preferences
 
 ---
 
-## 9. EXPORT & SHARE
-
-### 📤 Export Chat
-- **Top bar** → **⬇️ Download** → Export as TXT
-- **Top bar** → **📄 File icon** → Export as HTML
-- TXT: Plain text format
-- HTML: Formatted with styling, opens in browser
-
-### 🖨️ Print / PDF
-- **Top bar** → **🖨️ Print icon**
-- Opens print dialog
-- Save as PDF using browser's print-to-PDF
-
-### 🔗 Share Chat via URL
-- **Top bar** → **🔗 Share Chat**
-- Generates a shareable URL
-- URL copied to clipboard automatically
-- Anyone with the URL can view the conversation
-- Works on same browser/device network
-
----
-
-## 10. NLCIL SPECIFIC FEATURES
-
-### 📋 Meeting Minutes Structurer
-- **Top bar** → **📋 icon** (desktop)
-- Or **Ctrl+K** → "Meeting Minutes"
-- Paste raw meeting notes (rough, messy, incomplete)
-- AI structures into formal MOM with:
-  - Date, Venue, Attendees
-  - Agenda Items
-  - Key Decisions
-  - Action Items Table (with responsible person & deadline)
-  - Next Meeting
-
-**Example input:**
-```
-Met today with IT team. Discussed server upgrade. 
-Rajan will check budget by Friday. 
-Kumar to prepare vendor list next week.
-Next meeting 15th June.
-```
-
-### ⚡ ABT Report Generator
-```
-/abt Generate report for May 2026. Unit availability was 85%. 
-DSM penalty of ₹2.3 lakhs. Scheduled outage on 12th May.
-```
-
-### 📄 Official Letter Templates
-```
-/letter Requesting sanction for procurement of 
-cybersecurity software worth ₹5 lakhs for CS Division
-```
-
-### 📝 DO Letter
-```
-/do Additional Principal Secretary, Ministry of Power 
-regarding delay in coal supply affecting generation targets
-```
-
-### 🔒 Cybersecurity Advisory
-```
-/advisory Phishing attacks targeting NLCIL email accounts. 
-Employees should not click suspicious links.
-```
-
-### 📊 Interview Mode
-- Sidebar → **Interview Mode** (or Settings)
-- Opens a popup window for interview practice
-- Separate from main chat
-- Useful for preparing for technical interviews
-
----
-
-## 11. AI UNIQUE FEATURES
-
-### ⚔️ AI Debate Partner
-Type `/debate` followed by any topic:
-```
-/debate Nuclear energy is the best solution for India's power needs
-```
-AI will:
-1. ✅ Argue strongly FOR the topic
-2. ❌ Argue strongly AGAINST the topic
-3. ⚖️ Give a neutral balanced verdict
-
-### 🔥 Roast My Work
-Paste your work and type `/roast`:
-```
-/roast [paste your report, email, code, or plan here]
-```
-AI gives:
-- 🔥 THE ROAST (brutal criticisms)
-- 💪 WHAT WORKS (genuine strengths)
-- 🎯 HOW TO FIX IT (specific improvements)
-- ⭐ SCORE: X/10
-
-### 💭 Thought Companion
-```
-/thought I'm thinking about switching departments but also 
-worried about salary and my team depends on me but I'm 
-not growing here and maybe I should just...
-```
-AI organizes your messy thoughts and gives clarity.
-
-### 😈 Devil's Advocate
-```
-/devil I want to implement a new cybersecurity policy 
-requiring all staff to change passwords every 30 days
-```
-AI gives the strongest possible counter-arguments to stress-test your thinking.
-
-### 👔 Executive Summary
-```
-/executive [paste long document or report]
-```
-Returns: **3 Key Points | 2 Risks | 1 Recommendation**
-
-### 🐛 Explain My Error
-```
-/error TypeError: Cannot read property 'map' of undefined
-at line 45 in dashboard.js
-```
-AI explains: what caused it, what concept you're missing, how to fix it, mini-lesson.
-
-### ⚠️ Why Am I Wrong?
-```
-/wrong Our plan is to migrate all servers to cloud by Q3 
-and decommission on-premise infrastructure completely
-```
-AI attacks from auditor, finance, safety, and operational perspectives.
-
----
-
-## 12. SETTINGS & CUSTOMIZATION
-
-### ⚙️ How to open Settings
-- Sidebar → **Settings**
-- Or **Ctrl+K** → "Settings"
-
-### 🌐 Response Language
-- **English** (default)
-- **Tamil** — AI responds in Tamil
-
-### 🎨 Font Size
-- Small / Medium / Large
-
-### 📋 Response Format
-- **Formal** — Professional structured responses
-- **Bullets** — Bullet points and lists
-- **Summary** — Concise and brief
-
-### 🚀 Feature Toggles
-- 🔔 Notification Sound
-- 📊 Word Count & Reading Time
-- ⌨️ Slash Commands
-- 📱 Hide Welcome on Mobile
-
-### 🔌 Plugins
-- 🌐 Web Search — AI searches internet when needed
-- 🧮 Calculator — Solves math expressions
-- 🌤️ Weather — Gets weather information
-
----
-
-## 13. SECURITY & PROXY
-
-### 🔒 Cloudflare Worker API Proxy
-**Why use it?** API keys are currently in the browser (anyone can see in DevTools). A Cloudflare Worker hides them server-side.
-
-**Setup (5 minutes, FREE):**
-
-1. Go to [cloudflare.com](https://cloudflare.com) → Sign up free
-2. Go to **Workers & Pages** → Create Worker
-3. Paste this code:
-
-```javascript
-export default {
-  async fetch(req) {
-    const body = await req.json();
-    const res = await fetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer YOUR_GROQ_API_KEY'
-        },
-        body: JSON.stringify(body)
-      }
-    );
-    return new Response(res.body, {
-      headers: {
-        ...Object.fromEntries(res.headers),
-        'Access-Control-Allow-Origin': '*'
-      }
-    });
-  }
-}
-```
-
-4. Replace `YOUR_GROQ_API_KEY` with your actual key
-5. Deploy → Copy the Worker URL (e.g., `https://quantum-proxy.yourname.workers.dev`)
-6. In QUANTUM AI → **Settings** → **API Proxy** → Paste URL → Save
-7. Reload the page
-
-**Result:** API key is now hidden in Cloudflare, not in browser!
-
----
-
-## 14. PWA — INSTALL AS APP
-
-### 📱 Install on Mobile (Android)
-1. Open QUANTUM AI in Chrome
-2. Tap the **3-dot menu** (top right)
-3. Tap **"Add to Home Screen"**
-4. Tap **"Install"**
-5. QUANTUM AI icon appears on home screen
-6. Opens like a native app (no browser bar)
-
-### 💻 Install on Desktop (Chrome/Edge)
-1. Open QUANTUM AI
-2. Look for **install icon** in address bar (right side)
-3. Click it → **"Install"**
-4. Or: 3-dot menu → **"Install QUANTUM AI"**
-
-### ✅ PWA Benefits
-- Works offline (cached)
-- Faster loading
-- No browser address bar
-- Feels like native app
-- Push notifications (when enabled)
-
----
-
-## 15. KEYBOARD SHORTCUTS
-
-| Shortcut | Action |
-|----------|--------|
-| **Ctrl+K** | Open Command Palette |
-| **Cmd+K** | Open Command Palette (Mac) |
-| **ESC** | Close any modal / Command Palette |
-| **Enter** | Send message |
-| **Shift+Enter** | New line in message |
-
----
-
-## 📊 FEATURE SUMMARY
-
-| Category | Count |
-|----------|-------|
-| Core Chat Features | 8 |
-| Slash Commands | 27 |
-| File Types Supported | 5 |
-| Message Actions | 10 |
-| Export Formats | 3 |
-| NLCIL Templates | 11 |
-| AI Unique Features | 8 |
-| Settings Options | 12 |
-| **TOTAL FEATURES** | **80+** |
-
----
-
-## 🏆 RATINGS
-
-| AI | Rating | Date |
-|----|--------|------|
-| ChatGPT | **9.2 / 10** | May 2026 |
-| Claude | **8.4 / 10** | May 2026 |
-
-> *"This is legitimately becoming an Enterprise-grade AI workstation. Most AI startups don't even have half this."* — ChatGPT
-
-> *"1 month-la ithellam panni irukkiya, seriously respect da."* — Claude
-
----
-
-## 🔗 LINKS
-
-- **Live App:** https://kappa-lilac.vercel.app
-- **GitHub:** https://github.com/mohanrajcyber/ARIA
-- **Built with:** Groq API, Vanilla JS, Tailwind CSS, Vercel
-
----
-
-*Last updated: May 2026 | QUANTUM AI v2.0*
+*QUANTUM AI — Personal Assistant for Velmurugan Sir, DGM – CS Division, NLCIL*  
+*Built by Mohanraj, Cybersecurity Professional*
