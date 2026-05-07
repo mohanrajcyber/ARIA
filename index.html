@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="QUANTUM AI">
+  <meta name="theme-color" content="#fb923c">
+  <meta name="description" content="QUANTUM AI - Advanced Intelligence Platform for NLCIL">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23fb923c'/><text y='.9em' font-size='80' x='10'>Q</text></svg>">
   <title>QUANTUM AI - Advanced Intelligence Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -395,6 +401,12 @@
       // 🆕 FEATURE 19: Plugins
       activePlugins: JSON.parse(localStorage.getItem('aria_plugins') || '["websearch", "calculator"]'),
       showPlugins: false,
+      // 🆕 Prompt Library
+      showPromptLibrary: false,
+      // 🆕 Folder/Project Organization
+      showFolderModal: false,
+      selectedFolder: null,
+      folders: JSON.parse(localStorage.getItem('aria_folders') || '[]'),
       // Settings / Preferences
       settings: JSON.parse(localStorage.getItem('aria_settings') || JSON.stringify({
         language: 'english',
@@ -2174,6 +2186,103 @@ Use formal NLCIL language. Be precise and professional.` }]
       }
     }
 
+    // ── 🆕 Prompt Library ─────────────────────────────────────
+    function getPromptLibrary() {
+      return JSON.parse(localStorage.getItem('aria_prompts') || JSON.stringify([
+        { id: '1', title: 'Draft Official Letter', prompt: 'Draft an official letter from DGM CS Division, NLCIL regarding ', category: 'NLCIL' },
+        { id: '2', title: 'ABT Report Summary', prompt: 'Generate an ABT (Availability Based Tariff) report summary for NLCIL Thermal Power Station. Include key metrics and observations.', category: 'NLCIL' },
+        { id: '3', title: 'Meeting Minutes', prompt: 'Prepare formal meeting minutes for CS Division, NLCIL. Meeting details: ', category: 'NLCIL' },
+        { id: '4', title: 'Cybersecurity Advisory', prompt: 'Draft a cybersecurity advisory notice for NLCIL CS Division regarding ', category: 'NLCIL' },
+        { id: '5', title: 'DO Letter', prompt: 'Draft a Demi-Official (DO) letter from Velmurugan, DGM CS Division, NLCIL to ', category: 'NLCIL' },
+        { id: '6', title: 'Explain Simply', prompt: 'Explain this in simple terms that anyone can understand: ', category: 'General' },
+        { id: '7', title: 'Summarize Document', prompt: 'Please provide a concise summary of the following document, highlighting key points and action items: ', category: 'General' },
+        { id: '8', title: 'RTI Response', prompt: 'Draft an official RTI (Right to Information) response for NLCIL CS Division for the query: ', category: 'NLCIL' },
+      ]));
+    }
+    function savePromptLibrary(prompts) {
+      localStorage.setItem('aria_prompts', JSON.stringify(prompts));
+    }
+    function addPromptToLibrary() {
+      const title = prompt('📚 Prompt title:');
+      if (!title) return;
+      const promptText = prompt('✍️ Prompt text:');
+      if (!promptText) return;
+      const category = prompt('📁 Category (e.g. NLCIL, General, Technical):', 'General') || 'General';
+      const prompts = getPromptLibrary();
+      prompts.unshift({ id: Date.now().toString(), title, prompt: promptText, category });
+      savePromptLibrary(prompts);
+      render();
+    }
+    function deletePrompt(id) {
+      const prompts = getPromptLibrary().filter(p => p.id !== id);
+      savePromptLibrary(prompts);
+      render();
+    }
+    function usePrompt(promptText) {
+      const input = document.getElementById('messageInput');
+      if (input) { input.value = promptText; input.focus(); state.showPromptLibrary = false; render(); }
+    }
+    function saveCurrentAsPrompt() {
+      const input = document.getElementById('messageInput');
+      const text = input ? input.value.trim() : '';
+      if (!text) { alert('Type a prompt first, then save it!'); return; }
+      const title = prompt('📚 Save as prompt — give it a title:', text.slice(0, 40));
+      if (!title) return;
+      const category = prompt('📁 Category:', 'General') || 'General';
+      const prompts = getPromptLibrary();
+      prompts.unshift({ id: Date.now().toString(), title, prompt: text, category });
+      savePromptLibrary(prompts);
+      alert('✅ Prompt saved to library!');
+    }
+
+    // ── 🆕 Folder / Project Organization ─────────────────────
+    function getFolders() {
+      return JSON.parse(localStorage.getItem('aria_folders') || '[]');
+    }
+    function saveFolders(folders) {
+      localStorage.setItem('aria_folders', JSON.stringify(folders));
+      state.folders = folders;
+    }
+    function createFolder() {
+      const name = prompt('📁 Folder name:');
+      if (!name) return;
+      const emoji = prompt('🎨 Emoji icon (optional):', '📁') || '📁';
+      const folders = getFolders();
+      folders.unshift({ id: Date.now().toString(), name, emoji, chatIds: [] });
+      saveFolders(folders);
+      render();
+    }
+    function deleteFolder(id) {
+      if (!confirm('Delete this folder? Chats inside will not be deleted.')) return;
+      const folders = getFolders().filter(f => f.id !== id);
+      saveFolders(folders);
+      if (state.selectedFolder === id) state.selectedFolder = null;
+      render();
+    }
+    function addChatToFolder(chatId, folderId) {
+      const folders = getFolders();
+      // Remove from all folders first
+      folders.forEach(f => { f.chatIds = f.chatIds.filter(id => id !== chatId); });
+      if (folderId) {
+        const folder = folders.find(f => f.id === folderId);
+        if (folder) folder.chatIds.push(chatId);
+      }
+      saveFolders(folders);
+      render();
+    }
+    function getChatFolder(chatId) {
+      return getFolders().find(f => f.chatIds.includes(chatId));
+    }
+    function getChatsInFolder(folderId) {
+      const folder = getFolders().find(f => f.id === folderId);
+      if (!folder) return [];
+      return state.chats.filter(c => folder.chatIds.includes(c.id));
+    }
+    function getUnfolderedChats() {
+      const allFolderChatIds = getFolders().flatMap(f => f.chatIds);
+      return state.chats.filter(c => !allFolderChatIds.includes(c.id));
+    }
+
     // Main Render Function
     function render() {
       const pins = getPins();
@@ -2256,25 +2365,73 @@ Use formal NLCIL language. Be precise and professional.` }]
 
                 ${state.chats.length === 0 ? `
                   <p class="text-xs text-gray-400 dark:text-gray-600 text-center mt-6 px-4">No chat history yet.<br>Start a conversation!</p>
-                ` : state.chats.map(chat => `
-                  <div class="group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${chat.id === state.currentChatId ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
-                    onclick="loadChat('${chat.id}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="flex-shrink-0 text-gray-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <div class="flex-1 min-w-0">
-                      <p class="text-xs text-gray-700 dark:text-gray-300 truncate">${chat.title}</p>
-                      <p class="text-xs text-gray-400 dark:text-gray-600">${chat.date}</p>
-                    </div>
-                    <button onclick="event.stopPropagation(); deleteChat('${chat.id}')" class="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 rounded transition-all">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
-                    </button>
-                  </div>
-                `).join('')}
+                ` : (() => {
+                  const folders = getFolders();
+                  const unfolderedChats = getUnfolderedChats();
+                  return `
+                    <!-- Folders Section -->
+                    ${folders.length > 0 ? folders.map(folder => `
+                      <div class="mb-2">
+                        <div class="flex items-center justify-between px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer group"
+                          onclick="state.selectedFolder = state.selectedFolder === '${folder.id}' ? null : '${folder.id}'; render();">
+                          <span class="text-xs font-semibold text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                            ${folder.emoji} ${folder.name}
+                            <span class="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full px-1.5 text-xs">${folder.chatIds.length}</span>
+                          </span>
+                          <div class="flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-400 transition-transform ${state.selectedFolder === folder.id ? 'rotate-180' : ''}"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <button onclick="event.stopPropagation(); deleteFolder('${folder.id}')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs p-0.5">✕</button>
+                          </div>
+                        </div>
+                        ${state.selectedFolder === folder.id ? getChatsInFolder(folder.id).map(chat => `
+                          <div class="group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer mb-0.5 ml-2 transition-colors ${chat.id === state.currentChatId ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                            onclick="loadChat('${chat.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="flex-shrink-0 text-gray-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <p class="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">${chat.title}</p>
+                            <button onclick="event.stopPropagation(); deleteChat('${chat.id}')" class="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500 rounded">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path></svg>
+                            </button>
+                          </div>
+                        `).join('') : ''}
+                      </div>
+                    `).join('') : ''}
+
+                    <!-- Unfoldered Chats -->
+                    ${folders.length > 0 && unfolderedChats.length > 0 ? `
+                      <p class="text-xs text-gray-400 dark:text-gray-600 px-2 mb-1 mt-2">💬 Recent</p>
+                    ` : ''}
+                    ${unfolderedChats.map(chat => `
+                      <div class="group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${chat.id === state.currentChatId ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                        onclick="loadChat('${chat.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="flex-shrink-0 text-gray-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        <div class="flex-1 min-w-0">
+                          <p class="text-xs text-gray-700 dark:text-gray-300 truncate">${chat.title}</p>
+                          <p class="text-xs text-gray-400 dark:text-gray-600">${chat.date}</p>
+                        </div>
+                        <div class="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                          <button onclick="event.stopPropagation(); const f=getFolders(); if(f.length===0){alert('Create a folder first!');return;} const names=f.map((x,i)=>i+1+'. '+x.emoji+' '+x.name).join('\\n'); const idx=prompt('Move to folder:\\n'+names+'\\n0. Remove from folder'); if(idx===null)return; const fi=parseInt(idx); addChatToFolder('${chat.id}', fi===0?null:f[fi-1]?.id);" class="p-1 hover:text-orange-500 rounded text-gray-400" title="Move to folder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                          </button>
+                          <button onclick="event.stopPropagation(); deleteChat('${chat.id}')" class="p-1 hover:text-red-500 rounded transition-all text-gray-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+                          </button>
+                        </div>
+                      </div>
+                    `).join('')}
+                  `;
+                })()}
               </div>
               ` : '<div class="flex-1"></div>'}
 
               <!-- Sidebar Footer -->
               <div class="p-2 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
                 ${state.sidebarExpanded ? `
+                  <button onclick="createFolder()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-sm text-orange-600 dark:text-orange-400 mb-1">
+                    <span>📁</span><span>New Folder</span>
+                  </button>
+                  <button onclick="state.showPromptLibrary = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors text-sm text-purple-600 dark:text-purple-400 mb-1">
+                    <span>📚</span><span>Prompt Library</span>
+                  </button>
                   <button onclick="state.showNotes = true; render();" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors text-sm text-yellow-600 dark:text-yellow-400 mb-1">
                     <span>📝</span><span>Notes</span>
                   </button>
@@ -2855,6 +3012,56 @@ Use formal NLCIL language. Be precise and professional.` }]
               </div>
             </div>
           ` : ''}
+
+          <!-- 🆕 Prompt Library Modal -->
+          ${state.showPromptLibrary ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showPromptLibrary=false;render();}">
+              <div class="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">📚 Prompt Library</h2>
+                  <div class="flex items-center gap-2">
+                    <button onclick="addPromptToLibrary()" class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium">+ Add New</button>
+                    <button onclick="state.showPromptLibrary=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                  </div>
+                </div>
+                <div class="p-4 max-h-[70vh] overflow-y-auto">
+                  ${(() => {
+                    const prompts = getPromptLibrary();
+                    const categories = [...new Set(prompts.map(p => p.category))];
+                    return categories.map(cat => `
+                      <div class="mb-4">
+                        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">${cat}</p>
+                        <div class="space-y-2">
+                          ${prompts.filter(p => p.category === cat).map(p => `
+                            <div class="flex items-start gap-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-orange-300 transition-colors group">
+                              <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-200">${p.title}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">${p.prompt.slice(0, 80)}${p.prompt.length > 80 ? '...' : ''}</p>
+                              </div>
+                              <div class="flex items-center gap-1 flex-shrink-0">
+                                <button onclick="usePrompt(${JSON.stringify(p.prompt).replace(/"/g,'&quot;')})" class="px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs">Use</button>
+                                <button onclick="deletePrompt('${p.id}')" class="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path></svg>
+                                </button>
+                              </div>
+                            </div>
+                          `).join('')}
+                        </div>
+                      </div>
+                    `).join('');
+                  })()}
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 🆕 PWA Install Button (shown when installable) -->
+          <div id="pwaInstallBtn" style="display:none; position:fixed; bottom:80px; right:16px; z-index:50;">
+            <button onclick="installPWA()" class="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-lg text-sm font-medium transition-all">
+              📲 Install App
+            </button>
+          </div>
+
         </div>
       `;
 
@@ -2915,6 +3122,50 @@ Use formal NLCIL language. Be precise and professional.` }]
         dismissBriefing();
       }
     }, 8000);
+
+    // ── PWA Service Worker Registration ──────────────────────
+    if ('serviceWorker' in navigator) {
+      const swCode = `
+        const CACHE = 'quantum-ai-v1';
+        const ASSETS = ['/'];
+        self.addEventListener('install', e => {
+          e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+          self.skipWaiting();
+        });
+        self.addEventListener('activate', e => {
+          e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
+          self.clients.claim();
+        });
+        self.addEventListener('fetch', e => {
+          if (e.request.method !== 'GET') return;
+          e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+        });
+      `;
+      const blob = new Blob([swCode], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(swUrl).catch(() => {});
+    }
+
+    // ── PWA Install Prompt ────────────────────────────────────
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      // Show install button in UI
+      const btn = document.getElementById('pwaInstallBtn');
+      if (btn) btn.style.display = 'flex';
+    });
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      const btn = document.getElementById('pwaInstallBtn');
+      if (btn) btn.style.display = 'none';
+    });
+    function installPWA() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(() => { deferredInstallPrompt = null; });
+      }
+    }
   </script>
 </body>
 </html>
