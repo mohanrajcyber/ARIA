@@ -407,6 +407,13 @@
       showFolderModal: false,
       selectedFolder: null,
       folders: JSON.parse(localStorage.getItem('aria_folders') || '[]'),
+      // 🆕 Explain Level (1=child, 5=expert)
+      explainLevel: 3,
+      showExplainSlider: false,
+      // 🆕 Debate Mode
+      showDebateModal: false,
+      debateTopic: '',
+      debatePhase: null, // 'agree' | 'disagree' | 'summary'
       // Settings / Preferences
       settings: JSON.parse(localStorage.getItem('aria_settings') || JSON.stringify({
         language: 'english',
@@ -2186,6 +2193,229 @@ Use formal NLCIL language. Be precise and professional.` }]
       }
     }
 
+    // ── 🆕 FEATURE: "Explain to Anyone" Slider ───────────────
+    const explainLevels = {
+      1: { label: '👶 5-Year Old',    instruction: 'Explain this like I am 5 years old. Use very simple words, fun analogies, and short sentences. Avoid all technical terms.' },
+      2: { label: '🧒 School Kid',    instruction: 'Explain this like I am a school student (age 12-14). Use simple language, relatable examples, and basic concepts only.' },
+      3: { label: '🎓 College Student', instruction: 'Explain this like I am a college student. Use standard terminology with brief explanations. Balance depth and clarity.' },
+      4: { label: '💼 Professional',  instruction: 'Explain this like I am a working professional. Use industry-standard terms, be precise and structured.' },
+      5: { label: '🔬 Domain Expert', instruction: 'Explain this at an expert level. Use technical terminology, assume deep domain knowledge, include nuances and edge cases.' },
+    };
+    async function explainAtLevel(content, level) {
+      const lvl = explainLevels[level] || explainLevels[3];
+      const aiMsgId = Date.now() + 1;
+      state.messages.push({ id: Date.now(), role: 'user', content: `🎚️ Explain at level "${lvl.label}":\n${content.slice(0,100)}...`, timestamp: Date.now() });
+      state.messages.push({ id: aiMsgId, role: 'assistant', content: '', timestamp: Date.now() });
+      state.isStreaming = true;
+      state.showExplainSlider = false;
+      render();
+      await generateResponseStreaming(
+        content,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + aiMsgId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => { state.isStreaming = false; render(); },
+        [{ role: 'system', content: lvl.instruction }, { role: 'user', content }]
+      );
+    }
+
+    // ── 🆕 FEATURE: "Fix My Prompt" Button ───────────────────
+    async function fixMyPrompt() {
+      const input = document.getElementById('messageInput');
+      const text = input ? input.value.trim() : '';
+      if (!text) { alert('Type a prompt first, then click Fix!'); return; }
+      const btn = document.getElementById('fixPromptBtn');
+      if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+      try {
+        const improved = await generateResponse(text, [
+          { role: 'system', content: 'You are a prompt engineering expert. The user has written a prompt that may be vague, unclear, or poorly structured. Rewrite it to be clearer, more specific, and more likely to get a great AI response. Return ONLY the improved prompt text, nothing else. No explanation, no prefix like "Improved prompt:", just the prompt itself.' },
+          { role: 'user', content: `Improve this prompt: ${text}` }
+        ]);
+        if (input && improved) {
+          input.value = improved.trim();
+          state.currentInput = improved.trim();
+          input.style.height = 'auto';
+          input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        }
+      } catch(e) {}
+      if (btn) { btn.textContent = '🔧'; btn.disabled = false; }
+    }
+
+    // ── 🆕 FEATURE: Response Remix ────────────────────────────
+    async function remixResponse(msgId, style) {
+      const msg = state.messages.find(m => m.id === msgId);
+      if (!msg || msg.role !== 'assistant') return;
+      const original = msg.content;
+      const styles = {
+        'funnier':  'Rewrite this response in a fun, witty, and entertaining way while keeping the core information. Add humor and personality.',
+        'formal':   'Rewrite this response in a very formal, professional tone suitable for official documents or executive communication.',
+        'story':    'Rewrite this response as an engaging story or narrative with characters and plot, making it memorable.',
+        'bullets':  'Rewrite this response as clean, scannable bullet points and numbered lists. No paragraphs.',
+        'tweet':    'Summarize this response as a series of tweets (max 280 chars each). Use emojis and hashtags.',
+        'eli5':     'Rewrite this response so a 5-year-old can understand it. Use very simple words and fun analogies.',
+      };
+      const instruction = styles[style];
+      if (!instruction) return;
+      const aiMsgId = Date.now() + 1;
+      state.messages.push({ id: aiMsgId, role: 'assistant', content: '', timestamp: Date.now(), remixOf: style });
+      state.isStreaming = true;
+      render();
+      await generateResponseStreaming(
+        original,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + aiMsgId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => { state.isStreaming = false; render(); },
+        [{ role: 'system', content: instruction }, { role: 'user', content: `Transform this:\n\n${original}` }]
+      );
+    }
+
+    // ── 🆕 FEATURE: AI Debate Partner ────────────────────────
+    async function startDebate(topic) {
+      if (!topic || !topic.trim()) return;
+      state.showDebateModal = false;
+      state.debateTopic = topic;
+
+      // Phase 1: Agree side
+      const agreeId = Date.now() + 1;
+      state.messages.push({ id: Date.now(), role: 'user', content: `⚔️ Debate Topic: "${topic}"`, timestamp: Date.now() });
+      state.messages.push({ id: agreeId, role: 'assistant', content: '', timestamp: Date.now() });
+      state.isStreaming = true;
+      render();
+
+      const agreeText = await new Promise((resolve) => {
+        let full = '';
+        generateResponseStreaming(topic,
+          (partial) => {
+            full = partial;
+            const idx = state.messages.findIndex(m => m.id === agreeId);
+            if (idx !== -1) state.messages[idx].content = partial;
+            const el = document.getElementById('streaming-msg-' + agreeId);
+            if (el) el.innerHTML = formatMarkdown(partial);
+            const area = document.getElementById('messagesArea');
+            if (area) area.scrollTop = area.scrollHeight;
+          },
+          (f) => resolve(f),
+          () => resolve(full),
+          [{ role: 'system', content: `You are a skilled debate champion arguing FOR the following topic. Present 3-4 strong arguments with evidence and examples. Be persuasive and confident. Start with "✅ ARGUING FOR: ${topic}"` }, { role: 'user', content: topic }]
+        );
+      });
+
+      // Phase 2: Disagree side
+      const disagreeId = Date.now() + 2;
+      state.messages.push({ id: disagreeId, role: 'assistant', content: '', timestamp: Date.now() });
+      render();
+
+      const disagreeText = await new Promise((resolve) => {
+        let full = '';
+        generateResponseStreaming(topic,
+          (partial) => {
+            full = partial;
+            const idx = state.messages.findIndex(m => m.id === disagreeId);
+            if (idx !== -1) state.messages[idx].content = partial;
+            const el = document.getElementById('streaming-msg-' + disagreeId);
+            if (el) el.innerHTML = formatMarkdown(partial);
+            const area = document.getElementById('messagesArea');
+            if (area) area.scrollTop = area.scrollHeight;
+          },
+          (f) => resolve(f),
+          () => resolve(full),
+          [{ role: 'system', content: `You are a skilled debate champion arguing AGAINST the following topic. Present 3-4 strong counter-arguments with evidence. Be persuasive and confident. Start with "❌ ARGUING AGAINST: ${topic}"` }, { role: 'user', content: topic }]
+        );
+      });
+
+      // Phase 3: Neutral summary
+      const summaryId = Date.now() + 3;
+      state.messages.push({ id: summaryId, role: 'assistant', content: '', timestamp: Date.now() });
+      render();
+
+      generateResponseStreaming(topic,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === summaryId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + summaryId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === summaryId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => { state.isStreaming = false; render(); },
+        [{ role: 'system', content: `You are a neutral moderator. Summarize both sides of the debate fairly. Highlight the strongest points from each side. Give a balanced verdict. Start with "⚖️ NEUTRAL VERDICT:"` },
+         { role: 'user', content: `Topic: ${topic}\n\nFOR:\n${agreeText}\n\nAGAINST:\n${disagreeText}` }]
+      );
+    }
+
+    // ── 🆕 FEATURE: "Roast My Work" Mode ─────────────────────
+    async function roastMyWork() {
+      const input = document.getElementById('messageInput');
+      const text = input ? input.value.trim() : '';
+      if (!text) { alert('Paste your work (writing, plan, code, idea) in the input first!'); return; }
+      if (input) input.value = '';
+      const aiMsgId = Date.now() + 1;
+      state.messages.push({ id: Date.now(), role: 'user', content: `🔥 Roast my work:\n\n${text.slice(0,200)}${text.length > 200 ? '...' : ''}`, timestamp: Date.now() });
+      state.messages.push({ id: aiMsgId, role: 'assistant', content: '', timestamp: Date.now() });
+      state.isStreaming = true;
+      render();
+      await generateResponseStreaming(
+        text,
+        (partial) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = partial;
+          const el = document.getElementById('streaming-msg-' + aiMsgId);
+          if (el) el.innerHTML = formatMarkdown(partial);
+          const area = document.getElementById('messagesArea');
+          if (area) area.scrollTop = area.scrollHeight;
+        },
+        (full) => {
+          const idx = state.messages.findIndex(m => m.id === aiMsgId);
+          if (idx !== -1) state.messages[idx].content = full;
+          state.isStreaming = false;
+          saveCurrentChat();
+          render();
+        },
+        (err) => { state.isStreaming = false; render(); },
+        [{ role: 'system', content: `You are a brutally honest but kind critic. The user wants genuine, harsh feedback on their work. 
+Structure your response as:
+🔥 **THE ROAST** (2-3 brutal but fair criticisms)
+💪 **WHAT WORKS** (genuine strengths)  
+🎯 **HOW TO FIX IT** (specific actionable improvements)
+⭐ **SCORE: X/10** (honest rating with one-line verdict)
+
+Be direct, specific, and constructive. No sugarcoating, but no cruelty either.` },
+         { role: 'user', content: text }]
+      );
+    }
+
     // ── 🆕 Prompt Library ─────────────────────────────────────
     function getPromptLibrary() {
       return JSON.parse(localStorage.getItem('aria_prompts') || JSON.stringify([
@@ -2664,6 +2894,29 @@ Use formal NLCIL language. Be precise and professional.` }]
                               <button onclick="speakMessage('${safeContent}')" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 hover:text-gray-600 text-xs flex items-center gap-1" title="Read aloud">
                                 ${icons.speaker}
                               </button>
+
+                              <!-- 🆕 Remix Button -->
+                              <div class="relative group/remix">
+                                <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 hover:text-purple-500 text-xs" title="Remix response">🎨</button>
+                                <div class="hidden group-hover/remix:block absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 z-10 whitespace-nowrap">
+                                  <p class="text-xs text-gray-400 px-2 py-1 font-semibold">🎨 Remix as...</p>
+                                  <button onclick="remixResponse(${msg.id}, 'funnier')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">😂 Funnier</button>
+                                  <button onclick="remixResponse(${msg.id}, 'formal')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">👔 More Formal</button>
+                                  <button onclick="remixResponse(${msg.id}, 'story')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">📖 As a Story</button>
+                                  <button onclick="remixResponse(${msg.id}, 'bullets')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">• Bullet Points</button>
+                                  <button onclick="remixResponse(${msg.id}, 'tweet')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">🐦 As Tweets</button>
+                                  <button onclick="remixResponse(${msg.id}, 'eli5')" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">👶 ELI5</button>
+                                </div>
+                              </div>
+
+                              <!-- 🆕 Explain Level Button -->
+                              <div class="relative group/explain">
+                                <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 hover:text-blue-500 text-xs" title="Explain at different level">🎚️</button>
+                                <div class="hidden group-hover/explain:block absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 z-10 whitespace-nowrap">
+                                  <p class="text-xs text-gray-400 px-2 py-1 font-semibold">🎚️ Explain for...</p>
+                                  ${[1,2,3,4,5].map(l => `<button onclick="explainAtLevel('${safeContent}', ${l})" class="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${explainLevels[l].label}</button>`).join('')}
+                                </div>
+                              </div>
                               
                               <!-- ✅ FEATURE 7: Branch Conversation -->
                               <button onclick="branchConversation(${msg.id})" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 hover:text-gray-600 text-xs flex items-center gap-1" title="Branch conversation">
@@ -2747,6 +3000,22 @@ Use formal NLCIL language. Be precise and professional.` }]
                     </div>
                   ` : ''}
                 ` : ''}
+
+                <!-- 🆕 Extra Action Buttons Row -->
+                <div class="flex items-center gap-1 mb-1 flex-wrap">
+                  <button id="fixPromptBtn" onclick="fixMyPrompt()" class="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg text-xs transition-colors border border-blue-200 dark:border-blue-800" title="Fix & improve your prompt">
+                    🔧 Fix Prompt
+                  </button>
+                  <button onclick="roastMyWork()" class="flex items-center gap-1 px-2 py-1 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-lg text-xs transition-colors border border-red-200 dark:border-red-800" title="Get brutal honest feedback">
+                    🔥 Roast It
+                  </button>
+                  <button onclick="state.showDebateModal=true;render();" class="flex items-center gap-1 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-lg text-xs transition-colors border border-purple-200 dark:border-purple-800" title="Start AI debate">
+                    ⚔️ Debate
+                  </button>
+                  <button onclick="saveCurrentAsPrompt()" class="flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-600 dark:text-green-400 rounded-lg text-xs transition-colors border border-green-200 dark:border-green-800" title="Save to prompt library">
+                    📚 Save
+                  </button>
+                </div>
 
                 <div class="flex items-end gap-1 sm:gap-2">
                   <!-- File Upload -->
@@ -3061,6 +3330,34 @@ Use formal NLCIL language. Be precise and professional.` }]
               📲 Install App
             </button>
           </div>
+
+          <!-- 🆕 Debate Modal -->
+          ${state.showDebateModal ? `
+            <div class="modal-backdrop" onclick="if(event.target===this){state.showDebateModal=false;render();}">
+              <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">⚔️ AI Debate Partner</h2>
+                  <button onclick="state.showDebateModal=false;render();" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">${icons.x}</button>
+                </div>
+                <div class="p-5">
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Enter a topic and AI will argue both FOR and AGAINST it, then give a neutral verdict.</p>
+                  <textarea id="debateTopicInput" placeholder="e.g. AI will replace most jobs in 10 years&#10;e.g. Remote work is better than office work&#10;e.g. Social media does more harm than good"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-purple-300 resize-none dark:text-gray-200" rows="3"></textarea>
+                  <div class="flex gap-2 mt-3">
+                    <button onclick="state.showDebateModal=false;render();" class="flex-1 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+                    <button onclick="const t=document.getElementById('debateTopicInput').value.trim(); if(t) startDebate(t);" class="flex-1 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium">
+                      ⚔️ Start Debate!
+                    </button>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-1">
+                    ${['AI will replace most jobs', 'Remote work is better', 'Social media does more harm than good', 'Nuclear energy is safe', 'Cryptocurrency is the future'].map(t => `
+                      <button onclick="document.getElementById('debateTopicInput').value='${t}'" class="px-2 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded text-xs border border-purple-200 dark:border-purple-800 hover:bg-purple-100">${t}</button>
+                    `).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
 
         </div>
       `;
