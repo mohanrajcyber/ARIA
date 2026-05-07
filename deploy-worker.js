@@ -43,9 +43,9 @@ const CF_API_TOKEN  = env.CF_API_TOKEN;
 const CF_ACCOUNT_ID = env.CF_ACCOUNT_ID;
 const WORKER_NAME   = 'quantum-ai-proxy';
 
-// Collect all GROQ keys from .env (GROQ_KEY_1 to GROQ_KEY_15)
+// Collect all GROQ keys from .env (GROQ_KEY_1 to GROQ_KEY_20)
 const GROQ_KEYS = [];
-for (let i = 1; i <= 15; i++) {
+for (let i = 1; i <= 20; i++) {
   const key = env[`GROQ_KEY_${i}`];
   if (key && key.startsWith('gsk_')) GROQ_KEYS.push(key);
 }
@@ -133,7 +133,7 @@ async function deploy() {
   console.log('✅ Worker script deployed!');
 
   // ── Step 2: Store all keys as one encrypted secret ──────────
-  console.log(`\n🔒 Step 2: Storing ${GROQ_KEYS.length} keys as encrypted secret...`);
+  console.log(`\n🔒 Step 2: Storing ${GROQ_KEYS.length} Groq keys as encrypted secret...`);
   const secretRes = await fetch(`${BASE}/workers/scripts/${WORKER_NAME}/secrets`, {
     method: 'PUT',
     headers: HEADERS,
@@ -148,7 +148,31 @@ async function deploy() {
     console.error('❌ Secret set failed:', JSON.stringify(secretData.errors, null, 2));
     process.exit(1);
   }
-  console.log('✅ All keys stored as encrypted secret!');
+  console.log('✅ All Groq keys stored as encrypted secret!');
+
+  // ── Step 2b: Store other API keys as secrets ─────────────────
+  const otherSecrets = [
+    { name: 'NEWSDATA_KEY',      key: env.NEWSDATA_KEY },
+    { name: 'OPENROUTER_KEY_1',  key: env.OPENROUTER_KEY_1 },
+    { name: 'OPENROUTER_KEY_2',  key: env.OPENROUTER_KEY_2 },
+    { name: 'MISTRAL_KEY_1',     key: env.MISTRAL_KEY_1 },
+    { name: 'MISTRAL_KEY_2',     key: env.MISTRAL_KEY_2 },
+    { name: 'HUGGINGFACE_KEY',   key: env.HUGGINGFACE_KEY },
+  ].filter(s => s.key && s.key.length > 5);
+
+  if (otherSecrets.length > 0) {
+    console.log(`\n🔒 Step 2b: Storing ${otherSecrets.length} other API keys as secrets...`);
+    for (const secret of otherSecrets) {
+      const res = await fetch(`${BASE}/workers/scripts/${WORKER_NAME}/secrets`, {
+        method: 'PUT',
+        headers: HEADERS,
+        body: JSON.stringify({ name: secret.name, text: secret.key, type: 'secret_text' })
+      });
+      const data = await res.json();
+      if (data.success) console.log(`  ✅ ${secret.name} stored`);
+      else console.warn(`  ⚠️ ${secret.name} failed:`, data.errors?.[0]?.message);
+    }
+  }
 
   // ── Step 3: Get Worker URL ───────────────────────────────────
   console.log('\n🌐 Step 3: Getting Worker URL...');
@@ -165,14 +189,15 @@ async function deploy() {
   console.log('═'.repeat(52));
   console.log(`\n✅ Worker Name : ${WORKER_NAME}`);
   console.log(`✅ Worker URL  : ${workerUrl}`);
-  console.log(`✅ Keys Stored : ${GROQ_KEYS.length} keys (encrypted)`);
+  console.log(`✅ Groq Keys   : ${GROQ_KEYS.length} keys (encrypted, auto-rotation)`);
+  console.log(`✅ Other Keys  : NewsData, OpenRouter x2, Mistral x2, HuggingFace`);
   console.log(`✅ Rotation    : Auto on 429/401 errors`);
   console.log('\n📋 NEXT STEPS:');
   console.log('1. Copy the Worker URL above');
   console.log('2. Open QUANTUM AI → Settings ⚙️');
   console.log('3. Scroll to "API Proxy (Cloudflare Worker)"');
   console.log('4. Paste the URL → Click Save → Reload');
-  console.log('\n🔒 All Groq API keys are now 100% hidden!');
+  console.log('\n🔒 All API keys are now 100% hidden from browser!');
   console.log('═'.repeat(52));
 }
 
