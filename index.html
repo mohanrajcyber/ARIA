@@ -658,6 +658,10 @@
     const _k = (a,b) => a+b;
     const GROQ_KEYS = [
       _k('gsk_8m0dhoYijX5Pxsse','zsElWGdyb3FYs4PRe90PQ19XUI8fWEVSyEXj'),
+      _k('gsk_QieZJTh9lagqw24d','eGZyWGdyb3FYP2uLZdgZ5Q3z7ByOFhDfW1kz'),
+      _k('gsk_wX4VG7QdqyHpk3Yp','a4RjWGdyb3FYvt8ecJPkO92ikuBHna6OxuKN'),
+      _k('gsk_h5ER4rDXcKzd7b5T','OSn7WGdyb3FYV6d6pI9mn8FP5AOaMIHLg9V4'),
+      _k('gsk_DfneebL2KoE2SEKV','XsuIWGdyb3FY20PV4P6bnmYGhajsRscPgj4d'),
       _k('gsk_7dA3GCnRi3W3wUQc','NdGIWGdyb3FY9xr5nAkZ1iZgA5gxSK0yNJ1K'),
       _k('gsk_8FDWbp1ANVdDAqi0','M5h3WGdyb3FYqtMu5ExRzJKfZCrfMzwqToJE'),
       _k('gsk_Jt9kBiWiFpMVTpR4','594xWGdyb3FYhqxWFE1c1op8UwjD6Z76ViEO'),
@@ -675,16 +679,38 @@
       _k('gsk_AbvOTAf9Zr8gT1RI','dYchWGdyb3FYoqlxVLX8ZDobIvUcjEpoYECp')
     ];
     let currentKeyIndex = 0;
+    // Track rate-limited keys with cooldown timestamps
+    const keyRateLimitedUntil = {};
+
+    function rotateKey() {
+      const now = Date.now();
+      // Mark current key as rate-limited for 60 seconds
+      keyRateLimitedUntil[currentKeyIndex] = now + 60000;
+      // Find next available key not in cooldown
+      for (let i = 1; i <= GROQ_KEYS.length; i++) {
+        const nextIdx = (currentKeyIndex + i) % GROQ_KEYS.length;
+        if (!keyRateLimitedUntil[nextIdx] || keyRateLimitedUntil[nextIdx] < now) {
+          currentKeyIndex = nextIdx;
+          GROQ_API_KEY = GROQ_KEYS[currentKeyIndex];
+          console.log(`🔑 Rotated to key ${currentKeyIndex + 1}/${GROQ_KEYS.length}`);
+          return;
+        }
+      }
+      // All keys rate-limited — use the one with earliest cooldown expiry
+      const earliest = Object.entries(keyRateLimitedUntil)
+        .sort((a, b) => a[1] - b[1])[0];
+      if (earliest) {
+        currentKeyIndex = parseInt(earliest[0]);
+        GROQ_API_KEY = GROQ_KEYS[currentKeyIndex];
+        console.log(`⏳ All keys rate-limited. Using key ${currentKeyIndex + 1}, cooldown expires in ${Math.ceil((keyRateLimitedUntil[currentKeyIndex] - now)/1000)}s`);
+      }
+    }
+
     let GROQ_API_KEY = GROQ_KEYS[0];
     // 🆕 Cloudflare Worker Proxy support (set in Settings to hide API keys)
     const CF_WORKER_URL = localStorage.getItem('aria_cf_worker') || '';
     const GROQ_API_URL = CF_WORKER_URL ? CF_WORKER_URL : 'https://api.groq.com/openai/v1/chat/completions';
     const GROQ_MODEL = 'llama-3.3-70b-versatile';
-
-    function rotateKey() {
-      currentKeyIndex = (currentKeyIndex + 1) % GROQ_KEYS.length;
-      GROQ_API_KEY = GROQ_KEYS[currentKeyIndex];
-    }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🧠 QUANTUM MEMORY ENGINE v2.0
