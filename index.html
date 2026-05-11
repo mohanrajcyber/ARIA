@@ -331,7 +331,7 @@
     // ── IndexedDB Setup (replaces localStorage for chats) ─────
     let db = null;
     const DB_NAME = 'QuantumAI_DB';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2; // bumped to 2 to add memories + ragChunks stores
 
     function initDB() {
       return new Promise((resolve, reject) => {
@@ -487,6 +487,12 @@
       fileMemoryOpen: false,
       // Persistent file context — stays until new chat
       activeFileContext: null,  // { name, content, pageCount, wordCount }
+      // 🔍 Visual Search Panel
+      showWebPanel: false,
+      webPanelQuery: '',
+      webPanelResults: [],
+      webPanelLoading: false,
+      webPanelUrl: '',
     };
 
     // Apply saved dark mode on load
@@ -631,6 +637,7 @@
         '/clearmemory': '__CLEAR_MEMORY__',
         '/timeline': '__SHOW_TIMELINE__',
         '/report': '__WEEKLY_REPORT__',
+        '/search': '__WEB_SEARCH__',
       };
       for (const [cmd, prompt] of Object.entries(commands)) {
         if (content.startsWith(cmd)) return prompt + content.slice(cmd.length).trim();
@@ -787,11 +794,138 @@
       render();
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📄 TF-IDF RAG ENGINE — handles 1000+ page documents
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    const ragIndex = {
+      chunks: [],      // { id, text, pageHint }
+      tfidf: [],       // per-chunk term frequency maps
+      idf: {},         // inverse document frequency
+      ready: false,
+      fileName: ''
+    };
+
+    // Tokenize text into terms
+    function ragTokenize(text) {
+      return text.toLowerCase()
+        .replace(/[^a-z0-9\u0B80-\u0BFF\s]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length > 2 && !['the','and','for','are','was','were','this','that','with','from','have','has','had','not','but','they','their','will','been','also','into','its','our','can','all','one','more','than','when','what','which','who','how','about','said','each','she','him','his','her','you','your','we','our','they','them','these','those','then','than','such','some','any','may','would','could','should','shall','must','been','being','both','few','more','most','other','some','such','only','same','very','just','over','after','before','between','through','during','under','above','below','since','while','where','there','here','now','still','even','back','also','well','way','new','old','first','last','long','great','little','own','right','big','high','low','next','early','young','important','public','private','real','best','free','open','special','small','large','national','local','social','political','economic','general','specific','different','similar','possible','available','necessary','certain','clear','full','short','simple','common','single','main','major','several','various','many','much','few','little','good','bad','great','small','large','high','low','long','short','old','new','young','early','late','hard','easy','fast','slow','hot','cold','dark','light','open','close','right','wrong','true','false'].includes(t));
+    }
+
+    // Build TF-IDF index from full document text
+    function ragBuildIndex(fullText, fileName) {
+      ragIndex.chunks = [];
+      ragIndex.tfidf = [];
+      ragIndex.idf = {};
+      ragIndex.ready = false;
+      ragIndex.fileName = fileName;
+
+      // Split into chunks of ~400 words, respecting page boundaries
+      const pages = fullText.split(/--- Page \d+ ---/);
+      let chunkId = 0;
+
+      pages.forEach((pageText, pageIdx) => {
+        const words = pageText.trim().split(/\s+/);
+        const chunkSize = 400;
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunkWords = words.slice(i, i + chunkSize);
+          if (chunkWords.length < 20) continue; // skip tiny chunks
+          ragIndex.chunks.push({
+            id: chunkId++,
+            text: chunkWords.join(' '),
+            pageHint: pageIdx > 0 ? `Page ${pageIdx}` : 'Document'
+          });
+        }
+      });
+
+      if (ragIndex.chunks.length === 0) {
+        // Fallback: no page markers, just split by words
+        const words = fullText.split(/\s+/);
+        const chunkSize = 400;
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunk = words.slice(i, i + chunkSize);
+          if (chunk.length < 20) continue;
+          ragIndex.chunks.push({ id: chunkId++, text: chunk.join(' '), pageHint: `Section ${Math.floor(i/chunkSize)+1}` });
+        }
+      }
+
+      // Compute TF for each chunk
+      const N = ragIndex.chunks.length;
+      const dfMap = {};
+
+      ragIndex.chunks.forEach((chunk, idx) => {
+        const terms = ragTokenize(chunk.text);
+        const tf = {};
+        terms.forEach(t => { tf[t] = (tf[t] || 0) + 1; });
+        // Normalize TF
+        const maxFreq = Math.max(...Object.values(tf), 1);
+        Object.keys(tf).forEach(t => { tf[t] = tf[t] / maxFreq; });
+        ragIndex.tfidf[idx] = tf;
+        // Count DF
+        Object.keys(tf).forEach(t => { dfMap[t] = (dfMap[t] || 0) + 1; });
+      });
+
+      // Compute IDF
+      Object.keys(dfMap).forEach(t => {
+        ragIndex.idf[t] = Math.log((N + 1) / (dfMap[t] + 1)) + 1;
+      });
+
+      ragIndex.ready = true;
+      console.log(`📄 RAG index built: ${ragIndex.chunks.length} chunks from "${fileName}"`);
+    }
+
+    // Retrieve top-K relevant chunks for a query
+    function ragRetrieve(query, topK = 5) {
+      if (!ragIndex.ready || ragIndex.chunks.length === 0) return null;
+
+      const queryTerms = ragTokenize(query);
+      if (queryTerms.length === 0) return null;
+
+      // Score each chunk using TF-IDF cosine similarity
+      const scores = ragIndex.chunks.map((chunk, idx) => {
+        const tf = ragIndex.tfidf[idx];
+        let score = 0;
+        queryTerms.forEach(term => {
+          if (tf[term] && ragIndex.idf[term]) {
+            score += tf[term] * ragIndex.idf[term];
+          }
+        });
+        return { idx, score, chunk };
+      });
+
+      // Sort by score descending
+      scores.sort((a, b) => b.score - a.score);
+
+      // Return top-K non-empty chunks
+      const top = scores.slice(0, topK).filter(s => s.score > 0);
+      if (top.length === 0) {
+        // Fallback: return first 3 chunks if no match
+        return ragIndex.chunks.slice(0, 3).map(c => c.text).join('\n\n---\n\n');
+      }
+
+      return top.map(s => `[${s.chunk.pageHint}]\n${s.chunk.text}`).join('\n\n---\n\n');
+    }
+
     async function buildSystemMessages(userMessage) {
       const fileCtx = state.activeFileContext;
-      const fileSection = fileCtx
-        ? `\n\nACTIVE DOCUMENT CONTEXT:\nFile: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages)` : ''}${fileCtx.wordCount ? `, ~${fileCtx.wordCount} words` : ''}\n\nFULL DOCUMENT CONTENT:\n\`\`\`\n${fileCtx.content}\n\`\`\`\n\nIMPORTANT: Answer ALL questions using this document content. Quote specific sections when relevant. If the answer is in the document, provide it directly.`
-        : '';
+
+      // Use RAG if index is ready, else fall back to truncated content
+      let fileSection = '';
+      if (fileCtx) {
+        let docContent;
+        if (ragIndex.ready && ragIndex.fileName === fileCtx.name) {
+          // RAG: retrieve only relevant chunks for this query
+          const retrieved = ragRetrieve(userMessage, 5);
+          docContent = retrieved || fileCtx.content.slice(0, 8000);
+          fileSection = `\n\nDOCUMENT: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages, ${ragIndex.chunks.length} indexed chunks)` : ''}\n\nRELEVANT SECTIONS (retrieved for this query):\n\`\`\`\n${docContent}\n\`\`\`\n\nAnswer based on these retrieved sections. If the answer isn't here, say "This specific detail may be in another section of the document."`;
+        } else {
+          // Fallback for non-PDF or small files
+          docContent = fileCtx.content.slice(0, 8000);
+          fileSection = `\n\nACTIVE DOCUMENT: ${fileCtx.name}\n\nCONTENT:\n\`\`\`\n${docContent}\n\`\`\`\n\nAnswer ALL questions using this document content.`;
+        }
+      }
       const memoryContext = await getMemoryContext();
       return [
         {
@@ -917,7 +1051,8 @@ Response language: ${state.settings.language === 'tamil' ? 'Respond in Tamil lan
 Response format: ${state.settings.responseFormat === 'bullets' ? 'Use bullet points and lists wherever possible.' : state.settings.responseFormat === 'summary' ? 'Keep responses concise and summarized.' : 'Use formal professional language with proper structure.'}
 You have expertise in power sector operations, cybersecurity, administration, and general knowledge.
 If the user uploads a document, analyze it thoroughly and answer questions based on its content. If asked something not in the document, clearly state "This information is not in the uploaded document" and provide general knowledge if available.
-When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].${fileSection}${memoryContext}`
+When you need current/live information not in your training data, indicate [SEARCH_NEEDED: specific search query].
+When the user asks to "open google", "search for X", "go to a website", or wants to browse the web, respond with [OPEN_SEARCH: search query or URL] and a brief message like "Opening search for X, Sir."${fileSection}${memoryContext}`
         },
         ...state.messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
@@ -1112,6 +1247,9 @@ When you need current/live information not in your training data, indicate [SEAR
       state.uploadedFileWordCount = null;
       state.fileSuggestion = null;
       state.activeFileContext = null;
+      // Clear RAG index
+      ragIndex.chunks = []; ragIndex.tfidf = []; ragIndex.idf = {};
+      ragIndex.ready = false; ragIndex.fileName = '';
       render();
     }
 
@@ -1287,7 +1425,12 @@ When you need current/live information not in your training data, indicate [SEAR
       }
 
       const wordCount = extractedText.split(/\s+/).filter(Boolean).length;
-      const truncated = extractedText.slice(0, 40000); // ~30-40 pages worth
+      const truncated = extractedText.slice(0, 40000); // kept for file memory / display
+
+      // 🔍 Build RAG index on FULL text (no truncation)
+      if (extractedText.length > 500) {
+        ragBuildIndex(extractedText, file.name);
+      }
 
       state.uploadedFileName = file.name;
       state.uploadedFileContent = truncated;
@@ -1402,6 +1545,48 @@ When you need current/live information not in your training data, indicate [SEAR
       }
     }
 
+    // ── 🔍 Visual Search Panel ────────────────────────────────
+    async function openWebSearch(query) {
+      if (!query) query = state.webPanelQuery;
+      if (!query.trim()) return;
+      state.showWebPanel = true;
+      state.webPanelQuery = query;
+      state.webPanelResults = [];
+      state.webPanelLoading = true;
+      state.webPanelUrl = '';
+      render();
+      try {
+        const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const results = [];
+        if (data.AbstractText) results.push({ title: data.Heading || query, snippet: data.AbstractText, url: data.AbstractURL || '', source: 'Wikipedia' });
+        if (data.Answer) results.push({ title: 'Quick Answer', snippet: data.Answer, url: '', source: 'DuckDuckGo' });
+        (data.RelatedTopics || []).slice(0, 8).forEach(t => {
+          if (t.Text && t.FirstURL) results.push({ title: t.Text.slice(0, 60), snippet: t.Text, url: t.FirstURL, source: 'DuckDuckGo' });
+        });
+        state.webPanelResults = results;
+      } catch(e) {
+        state.webPanelResults = [{ title: 'Search Error', snippet: 'Could not fetch results. Try opening in browser.', url: '', source: '' }];
+      }
+      state.webPanelLoading = false;
+      render();
+    }
+
+    function openUrlInPanel(url) {
+      if (!url) return;
+      state.webPanelUrl = url;
+      render();
+    }
+
+    function closeWebPanel() {
+      state.showWebPanel = false;
+      state.webPanelUrl = '';
+      state.webPanelResults = [];
+      state.webPanelQuery = '';
+      render();
+    }
+
     async function sendMessage() {
       const input = document.getElementById('messageInput');
       const content = input.value.trim();
@@ -1428,6 +1613,34 @@ When you need current/live information not in your training data, indicate [SEAR
       if (processedContent === '__SHOW_MEMORY__') { showMemoryPanel(); return; }
       if (processedContent === '__CLEAR_MEMORY__') { clearMemory(); return; }
       if (processedContent === '__SHOW_TIMELINE__') { showTimelinePanel(); return; }
+      if (processedContent === '__WEB_SEARCH__') {
+        const q = finalContent.replace('/search', '').trim();
+        openWebSearch(q || 'QUANTUM AI');
+        return;
+      }
+
+      // 🌐 Natural language web search detection
+      const searchPatterns = [
+        /^(?:open|go to|launch|show)\s+google\s*(?:and\s+search\s+(?:for\s+)?(.+))?$/i,
+        /^(?:search|search for|google|look up|find)\s+(.+)$/i,
+        /^(?:open|show|browse)\s+(https?:\/\/\S+)$/i,
+        /^(?:open|go to|visit)\s+([\w.-]+\.\w{2,})(.*)$/i,
+      ];
+      for (const pattern of searchPatterns) {
+        const m = processedContent.match(pattern);
+        if (m) {
+          const query = m[1] ? m[1].trim() : 'Google';
+          // If it looks like a URL
+          if (query.match(/^https?:\/\//i)) {
+            state.showWebPanel = true; state.webPanelUrl = query; state.webPanelQuery = query; render();
+          } else if (query.match(/^[\w.-]+\.\w{2,}/)) {
+            state.showWebPanel = true; state.webPanelUrl = 'https://' + query; state.webPanelQuery = query; render();
+          } else {
+            openWebSearch(query === 'Google' ? '' : query);
+          }
+          return;
+        }
+      }
       if (processedContent === '__WEEKLY_REPORT__') {
         const input2 = document.getElementById('messageInput');
         if (input2) input2.value = '';
@@ -1516,6 +1729,16 @@ When you need current/live information not in your training data, indicate [SEAR
           const idx = state.messages.findIndex(m => m.id === aiMsgId);
           if (idx !== -1) { state.messages[idx].content = cleanFull; }
           state.isStreaming = false;
+
+          // 🌐 Check if AI wants to open web search panel
+          const openSearchMatch = cleanFull.match(/\[OPEN_SEARCH:\s*([^\]]+)\]/i);
+          if (openSearchMatch) {
+            const sq = openSearchMatch[1].trim();
+            const displayContent = cleanFull.replace(/\[OPEN_SEARCH:[^\]]+\]/gi, '').trim();
+            const idx2 = state.messages.findIndex(m => m.id === aiMsgId);
+            if (idx2 !== -1) state.messages[idx2].content = displayContent;
+            openWebSearch(sq);
+          }
 
           // Check for [SEARCH_NEEDED: query] pattern
           const searchMatch = cleanFull.match(/\[SEARCH_NEEDED:\s*([^\]]+)\]/i);
@@ -3243,6 +3466,10 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                   </div>
                 </div>
                 <div class="flex items-center gap-1 hidden sm:flex">
+                  <!-- 🔍 Web Search Panel Button -->
+                  <button onclick="state.showWebPanel=!state.showWebPanel;if(state.showWebPanel&&state.webPanelResults.length===0){}render();" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${state.showWebPanel ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'text-gray-600 dark:text-gray-400'}" title="Web Search Panel">
+                    🌐
+                  </button>
                   <!-- ✅ FEATURE 12: Search Button -->
                   <button onclick="toggleSearch()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${state.showSearch ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'text-gray-600 dark:text-gray-400'}" title="Search in conversation">
                     ${icons.search}
@@ -3509,7 +3736,7 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                 ${state.uploadedFileName ? `
                   <div class="flex items-center gap-2 mb-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-orange-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                    <span class="text-xs text-orange-700 dark:text-orange-300 flex-1 truncate">${state.uploadedFileName}${state.uploadedFilePageCount ? ` · ${state.uploadedFilePageCount} pages` : ''}${state.uploadedFileWordCount ? ` · ~${state.uploadedFileWordCount} words` : ''}</span>
+                    <span class="text-xs text-orange-700 dark:text-orange-300 flex-1 truncate">${state.uploadedFileName}${state.uploadedFilePageCount ? ` · ${state.uploadedFilePageCount} pages` : ''}${state.uploadedFileWordCount ? ` · ~${state.uploadedFileWordCount} words` : ''}${ragIndex.ready && ragIndex.fileName === state.uploadedFileName ? ` · <span class="text-green-600 dark:text-green-400 font-medium">🔍 RAG: ${ragIndex.chunks.length} chunks indexed</span>` : ''}</span>
                     <button onclick="removeFile()" class="text-orange-400 hover:text-red-500 text-xs">✕</button>
                   </div>
                   ${state.fileSuggestion && state.fileSuggestion.show ? `
@@ -3547,7 +3774,7 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                   <!-- Text Input -->
                   <div class="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-orange-300 focus-within:bg-white dark:focus-within:bg-gray-900 transition-all">
                     <textarea id="messageInput" oninput="state.currentInput = this.value; handleSlashHint(this);" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendMessage();}"
-                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /debate /roast /teach /memory /timeline /report' : ''})"
+                      placeholder="Ask QUANTUM AI anything... (Shift+Enter for new line${state.settings.slashCommands ? ' · /search /debate /roast /teach /memory /timeline /report' : ''})"
                       class="w-full bg-transparent px-3 sm:px-4 py-2 outline-none resize-none min-h-[38px] max-h-[120px] dark:text-gray-200 dark:placeholder-gray-500 text-sm sm:text-base ${getFontSizeClass()}" rows="1"></textarea>
                   </div>
 
@@ -3571,6 +3798,91 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                 </p>
               </div>
             </div>
+
+            <!-- 🔍 Visual Search Panel -->
+            ${state.showWebPanel ? `
+            <div class="flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all" style="width:380px;min-width:320px;max-width:420px;flex-shrink:0">
+              <!-- Panel Header -->
+              <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                <span class="text-base">🔍</span>
+                <input id="webPanelInput" type="text" value="${state.webPanelQuery.replace(/"/g,'&quot;')}"
+                  onkeydown="if(event.key==='Enter'){state.webPanelQuery=this.value;openWebSearch(this.value);}"
+                  class="flex-1 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 outline-none focus:border-orange-400 text-gray-800 dark:text-gray-200"
+                  placeholder="Search anything..."/>
+                <button onclick="state.webPanelQuery=document.getElementById('webPanelInput').value;openWebSearch(state.webPanelQuery);"
+                  class="px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium">Go</button>
+                <button onclick="closeWebPanel()" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500">✕</button>
+              </div>
+
+              <!-- Tab bar -->
+              <div class="flex border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <button onclick="state.webPanelUrl='';render();" class="flex-1 py-1.5 text-xs font-medium ${!state.webPanelUrl ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">Results</button>
+                <button onclick="" class="flex-1 py-1.5 text-xs font-medium ${state.webPanelUrl ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">Preview</button>
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 overflow-y-auto">
+                ${state.webPanelUrl ? `
+                  <!-- iframe preview -->
+                  <div class="h-full flex flex-col">
+                    <div class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                      <span class="text-xs text-gray-500 truncate flex-1">${state.webPanelUrl}</span>
+                      <a href="${state.webPanelUrl}" target="_blank" class="text-xs text-orange-500 hover:underline flex-shrink-0">Open ↗</a>
+                    </div>
+                    <iframe src="${state.webPanelUrl}" class="flex-1 w-full border-0" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>
+                  </div>
+                ` : state.webPanelLoading ? `
+                  <!-- Loading -->
+                  <div class="flex flex-col items-center justify-center h-40 gap-3">
+                    <div class="typing-indicator"><span></span><span></span><span></span></div>
+                    <p class="text-xs text-gray-400">Searching...</p>
+                  </div>
+                ` : state.webPanelResults.length > 0 ? `
+                  <!-- Results -->
+                  <div class="p-2 space-y-2">
+                    ${state.webPanelResults.map(r => `
+                      <div class="p-2.5 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700 transition-colors">
+                        <div class="flex items-start justify-between gap-2 mb-1">
+                          <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">${r.title}</p>
+                          ${r.url ? `<a href="${r.url}" target="_blank" onclick="event.preventDefault();openUrlInPanel('${r.url}')" class="text-xs text-orange-500 hover:underline flex-shrink-0">Preview</a>` : ''}
+                        </div>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">${r.snippet.slice(0,150)}${r.snippet.length>150?'...':''}</p>
+                        <div class="flex items-center justify-between mt-1.5">
+                          <span class="text-xs text-gray-400">${r.source}</span>
+                          ${r.url ? `
+                            <div class="flex gap-1">
+                              <button onclick="openUrlInPanel('${r.url}')" class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded text-gray-600 dark:text-gray-400">Preview</button>
+                              <a href="${r.url}" target="_blank" class="text-xs px-1.5 py-0.5 bg-orange-500 hover:bg-orange-600 rounded text-white">Open ↗</a>
+                            </div>
+                          ` : ''}
+                        </div>
+                      </div>
+                    `).join('')}
+                    <p class="text-xs text-gray-400 text-center py-2">Powered by DuckDuckGo</p>
+                  </div>
+                ` : `
+                  <!-- Empty state -->
+                  <div class="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+                    <span class="text-3xl">🔍</span>
+                    <p class="text-sm">Type to search</p>
+                    <p class="text-xs text-center px-4">Try: "NLCIL coal production" or "cybersecurity news"</p>
+                  </div>
+                `}
+              </div>
+
+              <!-- Quick searches -->
+              ${!state.webPanelUrl && !state.webPanelLoading ? `
+              <div class="p-2 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <p class="text-xs text-gray-400 mb-1.5">Quick searches:</p>
+                <div class="flex flex-wrap gap-1">
+                  ${['NLCIL news','coal India','power sector India','cybersecurity 2026'].map(q=>`
+                    <button onclick="openWebSearch('${q}')" class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-full text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">${q}</button>
+                  `).join('')}
+                </div>
+              </div>
+              ` : ''}
+            </div>
+            ` : ''}
           </div>
 
           <!-- Templates Modal -->
