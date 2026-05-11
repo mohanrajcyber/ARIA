@@ -946,7 +946,7 @@
         let docContent;
         if (ragIndex.ready && ragIndex.fileName === fileCtx.name) {
           // RAG: retrieve only relevant chunks for this query
-          const retrieved = ragRetrieve(userMessage, 5);
+          const retrieved = ragRetrieve(userMessage, 8);
           docContent = retrieved || fileCtx.content.slice(0, 8000);
           fileSection = `\n\nDOCUMENT: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages, ${ragIndex.chunks.length} indexed chunks)` : ''}\n\nRELEVANT SECTIONS (retrieved for this query):\n\`\`\`\n${docContent}\n\`\`\`\n\nIMPORTANT: Answer ONLY from the retrieved sections above. For page-specific questions, the exact page content is provided — read it carefully and answer directly. Do NOT say the information is unavailable if content is shown above.`;
         } else {
@@ -1643,8 +1643,8 @@ When the user asks to "open google", "search for X", "go to a website", or wants
         const arrayBuffer = await state.pdfPanelFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
         state.pdfPanelTotalPages = pdf.numPages;
-        // Render all pages as canvas data URLs (up to 50 pages for performance)
-        const maxPages = Math.min(pdf.numPages, 50);
+        // Render all pages as canvas data URLs (up to 100 pages for performance)
+        const maxPages = Math.min(pdf.numPages, 100);
         const pages = [];
         for (let i = 1; i <= maxPages; i++) {
           const page = await pdf.getPage(i);
@@ -4034,7 +4034,7 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                   class="w-12 text-xs text-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 outline-none focus:border-orange-400 text-gray-800 dark:text-gray-200"/>
                 <span class="text-xs text-gray-500 dark:text-gray-400">of ${state.pdfPanelTotalPages}</span>
                 <button onclick="pdfGoToPage(${state.pdfPanelCurrentPage + 1})" ${state.pdfPanelCurrentPage >= state.pdfPanelTotalPages ? 'disabled' : ''} class="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded disabled:opacity-40 hover:bg-gray-300 dark:hover:bg-gray-600">▶</button>
-                ${state.pdfPanelTotalPages > 50 ? '<span class="text-xs text-orange-500 ml-auto">First 50 pages shown</span>' : ''}
+                ${state.pdfPanelTotalPages > 100 ? '<span class="text-xs text-orange-500 ml-auto">First 100 pages shown</span>' : ''}
               </div>
 
               <!-- Pages -->
