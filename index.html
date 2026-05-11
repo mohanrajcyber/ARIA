@@ -1779,46 +1779,59 @@ When the user asks to "open google", "search for X", "go to a website", or wants
         }
       }
 
-      // 📄 PDF page read detection — "read page 6", "open page 6", "what is on page 6 fully"
+      // 📄 PDF page read detection — handles all variations
       if (state.activeFileContext) {
-        const pageReadMatch = processedContent.match(/^(?:read|open|show|go to|goto|page|read page|open page|show page|fully read|read fully)\s+(?:page\s+)?(\d+)(?:\s+fully?)?$/i);
+        // Matches: "read page 6", "go to 6 page", "open page 6", "page 6", "6 page", "go 6", "page6"
+        const pageReadMatch = processedContent.match(
+          /^(?:read|open|show|go\s*to|goto|go|jump\s*to|navigate\s*to)?\s*(?:page\s*)?(\d+)\s*(?:page|pages?|fully?|full)?$/i
+        ) || processedContent.match(
+          /^(?:read|open|show|go\s*to|goto|fully?\s*read|read\s*fully?)\s+(?:page\s+)?(\d+)$/i
+        ) || processedContent.match(
+          /^page\s*(\d+)$/i
+        );
         if (pageReadMatch) {
           const targetPage = parseInt(pageReadMatch[1]);
-          // Scroll PDF panel to that page
-          if (state.showPdfPanel) scrollPdfToPage(targetPage);
-          else { state.showPdfPanel = true; setTimeout(() => scrollPdfToPage(targetPage), 300); }
-          // Get full page content and ask AI to explain it
-          const pageContent = getFullPageContent(targetPage);
-          const userMsg = `📄 Read page ${targetPage} fully`;
-          state.messages.push({ id: Date.now(), role: 'user', content: userMsg, timestamp: Date.now() });
-          const aiMsgId3 = Date.now() + 1;
-          state.messages.push({ id: aiMsgId3, role: 'assistant', content: '', timestamp: Date.now() });
-          state.isTyping = false; state.isStreaming = true;
-          if (input) { input.value = ''; }
-          render();
-          const pagePrompt = pageContent
-            ? `The user wants to read page ${targetPage} of the document fully. Here is the complete content of page ${targetPage}:\n\n${pageContent}\n\nPlease present this content clearly and completely. Explain any technical terms if needed.`
-            : `The user wants to read page ${targetPage} of "${state.activeFileContext.name}". Please retrieve and present the content of page ${targetPage} from the document context available.`;
-          await generateResponseStreaming(pagePrompt,
-            (p) => {
-              const i = state.messages.findIndex(m => m.id === aiMsgId3);
-              if (i !== -1) state.messages[i].content = p;
-              const el = document.getElementById('streaming-msg-' + aiMsgId3);
-              if (el) el.innerHTML = formatMarkdown(stripMemoryTags(p));
-              const area = document.getElementById('messagesArea');
-              if (area) area.scrollTop = area.scrollHeight;
-            },
-            (f) => {
-              parseAndStoreMemory(f);
-              const clean = stripMemoryTags(f);
-              const i = state.messages.findIndex(m => m.id === aiMsgId3);
-              if (i !== -1) state.messages[i].content = clean;
-              state.isStreaming = false; saveCurrentChat(); playChime(); render();
-              pdfAutoScrollFromResponse(clean);
-            },
-            (e) => { state.isStreaming = false; render(); }
-          );
-          return;
+          if (targetPage >= 1 && targetPage <= (state.pdfPanelTotalPages || 9999)) {
+            // Scroll PDF panel to that page
+            if (state.showPdfPanel) {
+              scrollPdfToPage(targetPage);
+            } else {
+              state.showPdfPanel = true;
+              render();
+              setTimeout(() => scrollPdfToPage(targetPage), 400);
+            }
+            // Get full page content and ask AI to explain it
+            const pageContent = getFullPageContent(targetPage);
+            const userMsg = `📄 Read page ${targetPage} fully`;
+            state.messages.push({ id: Date.now(), role: 'user', content: userMsg, timestamp: Date.now() });
+            const aiMsgId3 = Date.now() + 1;
+            state.messages.push({ id: aiMsgId3, role: 'assistant', content: '', timestamp: Date.now() });
+            state.isTyping = false; state.isStreaming = true;
+            if (input) { input.value = ''; }
+            render();
+            const pagePrompt = pageContent
+              ? `The user wants to read page ${targetPage} of the document fully. Here is the complete content of page ${targetPage}:\n\n${pageContent}\n\nPresent this content clearly and completely. Explain any technical terms if needed. Address the user as Sir.`
+              : `The user wants to read page ${targetPage} of "${state.activeFileContext.name}". The RAG index does not have a direct chunk for this page. Please inform the user that page ${targetPage} content is not available in the indexed sections, and suggest nearby available pages.`;
+            await generateResponseStreaming(pagePrompt,
+              (p) => {
+                const i = state.messages.findIndex(m => m.id === aiMsgId3);
+                if (i !== -1) state.messages[i].content = p;
+                const el = document.getElementById('streaming-msg-' + aiMsgId3);
+                if (el) el.innerHTML = formatMarkdown(stripMemoryTags(p));
+                const area = document.getElementById('messagesArea');
+                if (area) area.scrollTop = area.scrollHeight;
+              },
+              (f) => {
+                parseAndStoreMemory(f);
+                const clean = stripMemoryTags(f);
+                const i = state.messages.findIndex(m => m.id === aiMsgId3);
+                if (i !== -1) state.messages[i].content = clean;
+                state.isStreaming = false; saveCurrentChat(); playChime(); render();
+              },
+              (e) => { state.isStreaming = false; render(); }
+            );
+            return;
+          }
         }
       }
 
