@@ -493,6 +493,14 @@
       webPanelResults: [],
       webPanelLoading: false,
       webPanelUrl: '',
+      // 📄 PDF Viewer Panel
+      showPdfPanel: false,
+      pdfPanelFile: null,       // File object
+      pdfPanelPages: [],        // rendered page canvases data URLs
+      pdfPanelCurrentPage: 1,
+      pdfPanelTotalPages: 0,
+      pdfPanelLoading: false,
+      pdfPanelHighlight: '',    // text to highlight
     };
 
     // Apply saved dark mode on load
@@ -1448,6 +1456,17 @@ When the user asks to "open google", "search for X", "go to a website", or wants
       // Save to file memory
       addToFileMemory(file.name, truncated, pageCount, wordCount);
 
+      // 📄 Auto-open PDF viewer panel for PDF files
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        state.pdfPanelFile = file;
+        state.showPdfPanel = true;
+        state.pdfPanelCurrentPage = 1;
+        state.pdfPanelPages = [];
+        state.pdfPanelTotalPages = pageCount;
+        // Render in background after UI update
+        setTimeout(() => openPdfPanel(file), 300);
+      }
+
       // Smart file suggestion
       const suggestionData = detectFileSuggestions(file.name);
       state.fileSuggestion = {
@@ -1587,7 +1606,78 @@ When the user asks to "open google", "search for X", "go to a website", or wants
       render();
     }
 
-    async function sendMessage() {
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📄 PDF VIEWER PANEL
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async function openPdfPanel(file) {
+      if (!file && !state.pdfPanelFile) return;
+      if (file) state.pdfPanelFile = file;
+      state.showPdfPanel = true;
+      state.pdfPanelLoading = true;
+      state.pdfPanelPages = [];
+      state.pdfPanelCurrentPage = 1;
+      render();
+      try {
+        const arrayBuffer = await state.pdfPanelFile.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+        state.pdfPanelTotalPages = pdf.numPages;
+        // Render all pages as canvas data URLs (up to 50 pages for performance)
+        const maxPages = Math.min(pdf.numPages, 50);
+        const pages = [];
+        for (let i = 1; i <= maxPages; i++) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1.4 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          pages.push({ num: i, dataUrl: canvas.toDataURL('image/jpeg', 0.85) });
+        }
+        state.pdfPanelPages = pages;
+        state.pdfPanelLoading = false;
+        render();
+        // Scroll to current page
+        setTimeout(() => scrollPdfToPage(state.pdfPanelCurrentPage), 200);
+      } catch(e) {
+        state.pdfPanelLoading = false;
+        state.pdfPanelPages = [];
+        render();
+        console.error('PDF render error:', e);
+      }
+    }
+
+    function closePdfPanel() {
+      state.showPdfPanel = false;
+      render();
+    }
+
+    function scrollPdfToPage(pageNum) {
+      state.pdfPanelCurrentPage = pageNum;
+      const el = document.getElementById('pdf-page-' + pageNum);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      render();
+    }
+
+    function pdfGoToPage(pageNum) {
+      const n = parseInt(pageNum);
+      if (isNaN(n) || n < 1 || n > state.pdfPanelTotalPages) return;
+      scrollPdfToPage(n);
+    }
+
+    // Called after AI responds — extract page number from response and jump to it
+    function pdfAutoScrollFromResponse(responseText) {
+      if (!state.showPdfPanel || state.pdfPanelPages.length === 0) return;
+      // Look for page references: "Page 23", "page 5", "pg. 12", "p.45"
+      const pageMatch = responseText.match(/\b(?:page|pg\.?|p\.)\s*(\d+)\b/i);
+      if (pageMatch) {
+        const pageNum = parseInt(pageMatch[1]);
+        if (pageNum >= 1 && pageNum <= state.pdfPanelTotalPages) {
+          setTimeout(() => scrollPdfToPage(pageNum), 500);
+        }
+      }
+    }
       const input = document.getElementById('messageInput');
       const content = input.value.trim();
 
@@ -1792,6 +1882,8 @@ When the user asks to "open google", "search for X", "go to a website", or wants
               mermaid.run();
               const area = document.getElementById('messagesArea');
               if (area) area.scrollTop = area.scrollHeight;
+              // 📄 PDF auto-scroll to referenced page
+              pdfAutoScrollFromResponse(cleanFull);
             }, 100);
           }
         },
@@ -3480,6 +3572,12 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                   <button onclick="state.showWebPanel=!state.showWebPanel;if(state.showWebPanel&&state.webPanelResults.length===0){}render();" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${state.showWebPanel ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'text-gray-600 dark:text-gray-400'}" title="Web Search Panel">
                     🌐
                   </button>
+                  <!-- 📄 PDF Viewer Panel Button -->
+                  ${state.activeFileContext && state.activeFileContext.name.toLowerCase().endsWith('.pdf') ? `
+                  <button onclick="state.showPdfPanel=!state.showPdfPanel;if(state.showPdfPanel&&state.pdfPanelPages.length===0&&state.pdfPanelFile){openPdfPanel(null);}render();" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${state.showPdfPanel ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'text-gray-600 dark:text-gray-400'}" title="PDF Viewer">
+                    📄
+                  </button>
+                  ` : ''}
                   <!-- ✅ FEATURE 12: Search Button -->
                   <button onclick="toggleSearch()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors ${state.showSearch ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'text-gray-600 dark:text-gray-400'}" title="Search in conversation">
                     ${icons.search}
@@ -3891,6 +3989,59 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                 </div>
               </div>
               ` : ''}
+            </div>
+            ` : ''}
+
+            <!-- 📄 PDF Viewer Panel -->
+            ${state.showPdfPanel ? `
+            <div class="flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" style="width:420px;min-width:340px;max-width:480px;flex-shrink:0">
+              <!-- Header -->
+              <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                <span class="text-base">📄</span>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 flex-1 truncate">${state.activeFileContext ? state.activeFileContext.name : 'PDF Viewer'}</span>
+                <button onclick="closePdfPanel()" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500 flex-shrink-0">✕</button>
+              </div>
+
+              <!-- Page navigation -->
+              <div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                <button onclick="pdfGoToPage(${state.pdfPanelCurrentPage - 1})" ${state.pdfPanelCurrentPage <= 1 ? 'disabled' : ''} class="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded disabled:opacity-40 hover:bg-gray-300 dark:hover:bg-gray-600">◀</button>
+                <span class="text-xs text-gray-500 dark:text-gray-400">Page</span>
+                <input type="number" min="1" max="${state.pdfPanelTotalPages}" value="${state.pdfPanelCurrentPage}"
+                  onchange="pdfGoToPage(this.value)"
+                  class="w-12 text-xs text-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 outline-none focus:border-orange-400 text-gray-800 dark:text-gray-200"/>
+                <span class="text-xs text-gray-500 dark:text-gray-400">of ${state.pdfPanelTotalPages}</span>
+                <button onclick="pdfGoToPage(${state.pdfPanelCurrentPage + 1})" ${state.pdfPanelCurrentPage >= state.pdfPanelTotalPages ? 'disabled' : ''} class="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded disabled:opacity-40 hover:bg-gray-300 dark:hover:bg-gray-600">▶</button>
+                ${state.pdfPanelTotalPages > 50 ? `<span class="text-xs text-orange-500 ml-auto">First 50 pages shown</span>` : ''}
+              </div>
+
+              <!-- Pages -->
+              <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-950 p-2" id="pdfViewerScroll">
+                ${state.pdfPanelLoading ? `
+                  <div class="flex flex-col items-center justify-center h-40 gap-3">
+                    <div class="typing-indicator"><span></span><span></span><span></span></div>
+                    <p class="text-xs text-gray-400">Rendering PDF pages...</p>
+                  </div>
+                ` : state.pdfPanelPages.length === 0 ? `
+                  <div class="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+                    <span class="text-3xl">📄</span>
+                    <p class="text-sm">No pages rendered yet</p>
+                  </div>
+                ` : state.pdfPanelPages.map(p => `
+                  <div id="pdf-page-${p.num}" class="mb-3 ${state.pdfPanelCurrentPage === p.num ? 'ring-2 ring-orange-400 rounded' : ''}">
+                    <div class="flex items-center justify-between px-1 mb-1">
+                      <span class="text-xs text-gray-400 dark:text-gray-600">Page ${p.num}</span>
+                      <button onclick="pdfGoToPage(${p.num})" class="text-xs text-orange-500 hover:underline">Jump here</button>
+                    </div>
+                    <img src="${p.dataUrl}" class="w-full rounded shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
+                      onclick="pdfGoToPage(${p.num})" alt="Page ${p.num}" loading="lazy"/>
+                  </div>
+                `).join('')}
+              </div>
+
+              <!-- Footer -->
+              <div class="px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                <p class="text-xs text-gray-400 text-center">Ask a question → AI auto-scrolls to relevant page</p>
+              </div>
             </div>
             ` : ''}
           </div>
