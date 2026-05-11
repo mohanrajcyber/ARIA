@@ -888,8 +888,30 @@
     function ragRetrieve(query, topK = 5) {
       if (!ragIndex.ready || ragIndex.chunks.length === 0) return null;
 
+      // 📌 Page-specific query detection — "what is on page 5", "page 23 content"
+      const pageMatch = query.match(/\b(?:page|pg\.?|p\.)\s*(\d+)\b/i);
+      if (pageMatch) {
+        const targetPage = parseInt(pageMatch[1]);
+        const pageChunks = ragIndex.chunks.filter(c =>
+          c.pageHint === `Page ${targetPage}` ||
+          c.pageHint === `Section ${targetPage}`
+        );
+        if (pageChunks.length > 0) {
+          return pageChunks.map(c => `[${c.pageHint}]\n${c.text}`).join('\n\n---\n\n');
+        }
+        // Fallback: return chunks near that page index
+        const approxIdx = Math.max(0, targetPage - 2);
+        const nearby = ragIndex.chunks.slice(approxIdx, approxIdx + 3);
+        if (nearby.length > 0) {
+          return nearby.map(c => `[${c.pageHint}]\n${c.text}`).join('\n\n---\n\n');
+        }
+      }
+
       const queryTerms = ragTokenize(query);
-      if (queryTerms.length === 0) return null;
+      if (queryTerms.length === 0) {
+        // No terms — return first 3 chunks
+        return ragIndex.chunks.slice(0, 3).map(c => `[${c.pageHint}]\n${c.text}`).join('\n\n---\n\n');
+      }
 
       // Score each chunk using TF-IDF cosine similarity
       const scores = ragIndex.chunks.map((chunk, idx) => {
@@ -909,8 +931,7 @@
       // Return top-K non-empty chunks
       const top = scores.slice(0, topK).filter(s => s.score > 0);
       if (top.length === 0) {
-        // Fallback: return first 3 chunks if no match
-        return ragIndex.chunks.slice(0, 3).map(c => c.text).join('\n\n---\n\n');
+        return ragIndex.chunks.slice(0, 3).map(c => `[${c.pageHint}]\n${c.text}`).join('\n\n---\n\n');
       }
 
       return top.map(s => `[${s.chunk.pageHint}]\n${s.chunk.text}`).join('\n\n---\n\n');
@@ -927,7 +948,7 @@
           // RAG: retrieve only relevant chunks for this query
           const retrieved = ragRetrieve(userMessage, 5);
           docContent = retrieved || fileCtx.content.slice(0, 8000);
-          fileSection = `\n\nDOCUMENT: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages, ${ragIndex.chunks.length} indexed chunks)` : ''}\n\nRELEVANT SECTIONS (retrieved for this query):\n\`\`\`\n${docContent}\n\`\`\`\n\nAnswer based on these retrieved sections. If the answer isn't here, say "This specific detail may be in another section of the document."`;
+          fileSection = `\n\nDOCUMENT: ${fileCtx.name}${fileCtx.pageCount ? ` (${fileCtx.pageCount} pages, ${ragIndex.chunks.length} indexed chunks)` : ''}\n\nRELEVANT SECTIONS (retrieved for this query):\n\`\`\`\n${docContent}\n\`\`\`\n\nIMPORTANT: Answer ONLY from the retrieved sections above. For page-specific questions, the exact page content is provided — read it carefully and answer directly. Do NOT say the information is unavailable if content is shown above.`;
         } else {
           // Fallback for non-PDF or small files
           docContent = fileCtx.content.slice(0, 8000);
