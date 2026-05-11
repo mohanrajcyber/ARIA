@@ -1575,8 +1575,8 @@ When the user asks to "open google", "search for X", "go to a website", or wants
 
     function openUrlInPanel(url) {
       if (!url) return;
-      state.webPanelUrl = url;
-      render();
+      // Many sites block iframes — open in new tab directly
+      window.open(url, '_blank');
     }
 
     function closeWebPanel() {
@@ -1620,23 +1620,33 @@ When the user asks to "open google", "search for X", "go to a website", or wants
       }
 
       // 🌐 Natural language web search detection
+      const trimmedLower = processedContent.trim().toLowerCase();
       const searchPatterns = [
-        /^(?:open|go to|launch|show)\s+google\s*(?:and\s+search\s+(?:for\s+)?(.+))?$/i,
-        /^(?:search|search for|google|look up|find)\s+(.+)$/i,
-        /^(?:open|show|browse)\s+(https?:\/\/\S+)$/i,
-        /^(?:open|go to|visit)\s+([\w.-]+\.\w{2,})(.*)$/i,
+        { re: /^(?:open|go to|launch|show)\s+google\s*(?:and\s+search\s+(?:for\s+)?(.+))?$/i, queryIdx: 1 },
+        { re: /^(?:search|search for|google|look up|find)\s+(.+)$/i, queryIdx: 1 },
+        { re: /^(?:open|show|browse)\s+(https?:\/\/\S+)$/i, queryIdx: 1 },
+        { re: /^(?:open|go to|visit)\s+([\w.-]+\.\w{2,})\s*(.*)$/i, queryIdx: 1 },
       ];
-      for (const pattern of searchPatterns) {
-        const m = processedContent.match(pattern);
+      // Direct "open google" with no query → open panel empty
+      if (trimmedLower === 'open google' || trimmedLower === 'google') {
+        state.showWebPanel = true; state.webPanelResults = []; state.webPanelQuery = ''; render();
+        setTimeout(() => { const el = document.getElementById('webPanelInput'); if(el){el.focus();} }, 200);
+        return;
+      }
+      for (const { re, queryIdx } of searchPatterns) {
+        const m = processedContent.trim().match(re);
         if (m) {
-          const query = m[1] ? m[1].trim() : 'Google';
-          // If it looks like a URL
-          if (query.match(/^https?:\/\//i)) {
-            state.showWebPanel = true; state.webPanelUrl = query; state.webPanelQuery = query; render();
-          } else if (query.match(/^[\w.-]+\.\w{2,}/)) {
-            state.showWebPanel = true; state.webPanelUrl = 'https://' + query; state.webPanelQuery = query; render();
+          const query = m[queryIdx] ? m[queryIdx].trim() : '';
+          if (!query) {
+            state.showWebPanel = true; state.webPanelResults = []; render();
+          } else if (query.match(/^https?:\/\//i)) {
+            window.open(query, '_blank');
+            state.showWebPanel = true; state.webPanelQuery = query; render();
+          } else if (query.match(/^[\w.-]+\.\w{2,}$/)) {
+            window.open('https://' + query, '_blank');
+            state.showWebPanel = true; state.webPanelQuery = query; render();
           } else {
-            openWebSearch(query === 'Google' ? '' : query);
+            openWebSearch(query);
           }
           return;
         }
@@ -3829,7 +3839,7 @@ Ask ONE question at a time. Wait for their response before continuing.` },
                       <span class="text-xs text-gray-500 truncate flex-1">${state.webPanelUrl}</span>
                       <a href="${state.webPanelUrl}" target="_blank" class="text-xs text-orange-500 hover:underline flex-shrink-0">Open ↗</a>
                     </div>
-                    <iframe src="${state.webPanelUrl}" class="flex-1 w-full border-0" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>
+                    <iframe src="${state.webPanelUrl}" class="flex-1 w-full border-0" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy" onerror="this.style.display='none'"></iframe>
                   </div>
                 ` : state.webPanelLoading ? `
                   <!-- Loading -->
