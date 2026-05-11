@@ -1702,9 +1702,19 @@ When the user asks to "open google", "search for X", "go to a website", or wants
 
     function scrollPdfToPage(pageNum) {
       state.pdfPanelCurrentPage = pageNum;
-      const el = document.getElementById('pdf-page-' + pageNum);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      render();
+      render(); // render first to update active page highlight
+      // Then scroll after DOM is updated — retry up to 5 times
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = document.getElementById('pdf-page-' + pageNum);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (attempts < 5) {
+          attempts++;
+          setTimeout(tryScroll, 200);
+        }
+      };
+      setTimeout(tryScroll, 100);
     }
 
     function pdfGoToPage(pageNum) {
