@@ -1689,15 +1689,29 @@ When the user asks to "open google", "search for X", "go to a website", or wants
 
     // Called after AI responds — extract page number from response and jump to it
     function pdfAutoScrollFromResponse(responseText) {
-      if (!state.showPdfPanel || state.pdfPanelPages.length === 0) return;
-      // Look for page references: "Page 23", "page 5", "pg. 12", "p.45"
-      const pageMatch = responseText.match(/\b(?:page|pg\.?|p\.)\s*(\d+)\b/i);
-      if (pageMatch) {
-        const pageNum = parseInt(pageMatch[1]);
+      if (!state.showPdfPanel) return;
+      // Look for page references: "Page 23", "page 5", "pg. 12", "p.45", "[Page 7]"
+      const matches = [...responseText.matchAll(/\b(?:\[Page|page|pg\.?|p\.)\s*(\d+)\]?\b/gi)];
+      if (matches.length > 0) {
+        // Use the first page reference found
+        const pageNum = parseInt(matches[0][1]);
         if (pageNum >= 1 && pageNum <= state.pdfPanelTotalPages) {
-          setTimeout(() => scrollPdfToPage(pageNum), 500);
+          setTimeout(() => scrollPdfToPage(pageNum), 600);
         }
       }
+    }
+
+    // Read a specific page fully from the RAG index
+    function getFullPageContent(pageNum) {
+      if (!ragIndex.ready) return null;
+      const chunks = ragIndex.chunks.filter(c =>
+        c.pageHint === `Page ${pageNum}` || c.pageHint === `Section ${pageNum}`
+      );
+      if (chunks.length > 0) return chunks.map(c => c.text).join('\n\n');
+      // Fallback: approximate by chunk index
+      const approxIdx = Math.max(0, pageNum - 2);
+      const nearby = ragIndex.chunks.slice(approxIdx, approxIdx + 4);
+      return nearby.length > 0 ? nearby.map(c => c.text).join('\n\n') : null;
     }
 
     async function sendMessage() {
@@ -1764,6 +1778,50 @@ When the user asks to "open google", "search for X", "go to a website", or wants
           return;
         }
       }
+
+      // 📄 PDF page read detection — "read page 6", "open page 6", "what is on page 6 fully"
+      if (state.activeFileContext) {
+        const pageReadMatch = processedContent.match(/^(?:read|open|show|go to|goto|page|read page|open page|show page|fully read|read fully)\s+(?:page\s+)?(\d+)(?:\s+fully?)?$/i);
+        if (pageReadMatch) {
+          const targetPage = parseInt(pageReadMatch[1]);
+          // Scroll PDF panel to that page
+          if (state.showPdfPanel) scrollPdfToPage(targetPage);
+          else { state.showPdfPanel = true; setTimeout(() => scrollPdfToPage(targetPage), 300); }
+          // Get full page content and ask AI to explain it
+          const pageContent = getFullPageContent(targetPage);
+          const userMsg = `📄 Read page ${targetPage} fully`;
+          state.messages.push({ id: Date.now(), role: 'user', content: userMsg, timestamp: Date.now() });
+          const aiMsgId3 = Date.now() + 1;
+          state.messages.push({ id: aiMsgId3, role: 'assistant', content: '', timestamp: Date.now() });
+          state.isTyping = false; state.isStreaming = true;
+          if (input) { input.value = ''; }
+          render();
+          const pagePrompt = pageContent
+            ? `The user wants to read page ${targetPage} of the document fully. Here is the complete content of page ${targetPage}:\n\n${pageContent}\n\nPlease present this content clearly and completely. Explain any technical terms if needed.`
+            : `The user wants to read page ${targetPage} of "${state.activeFileContext.name}". Please retrieve and present the content of page ${targetPage} from the document context available.`;
+          await generateResponseStreaming(pagePrompt,
+            (p) => {
+              const i = state.messages.findIndex(m => m.id === aiMsgId3);
+              if (i !== -1) state.messages[i].content = p;
+              const el = document.getElementById('streaming-msg-' + aiMsgId3);
+              if (el) el.innerHTML = formatMarkdown(stripMemoryTags(p));
+              const area = document.getElementById('messagesArea');
+              if (area) area.scrollTop = area.scrollHeight;
+            },
+            (f) => {
+              parseAndStoreMemory(f);
+              const clean = stripMemoryTags(f);
+              const i = state.messages.findIndex(m => m.id === aiMsgId3);
+              if (i !== -1) state.messages[i].content = clean;
+              state.isStreaming = false; saveCurrentChat(); playChime(); render();
+              pdfAutoScrollFromResponse(clean);
+            },
+            (e) => { state.isStreaming = false; render(); }
+          );
+          return;
+        }
+      }
+
       if (processedContent === '__WEEKLY_REPORT__') {
         const input2 = document.getElementById('messageInput');
         if (input2) input2.value = '';
